@@ -39,7 +39,7 @@ const User = sequelize.define(
         },
         status: {
             type: DataTypes.BOOLEAN,
-            defaultValue:true,
+            defaultValue: true,
             allowNull: true
         },
         is_deleted: {
@@ -58,11 +58,23 @@ const User = sequelize.define(
                 model: Role,
                 key: "id"
             },
-            defaultValue:1
+            defaultValue: 1
         },
         is_verified: {
             type: DataTypes.BOOLEAN,
             defaultValue: false
+        },
+        latitude: {
+            type: DataTypes.DECIMAL(10, 8),
+            allowNull: true
+        },
+        longitude: {
+            type: DataTypes.DECIMAL(11, 8),
+            allowNull: true
+        },
+        last_located_at: {
+            type: DataTypes.DATE,
+            allowNull: true
         },
 
         last_login_at: {
