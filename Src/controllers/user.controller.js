@@ -25,6 +25,7 @@ exports.create = async (req, res) => {
             mobile_no: req.body.mobile,
             password_hash: hashedPassword,
             user_type:"USERS",
+            role_1:1
         });
         return sendResponse(
             res,
