@@ -1,5 +1,6 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
+const User = require("./user");
 
 
 const vehicleType = sequelize.define
@@ -11,15 +12,25 @@ const vehicleType = sequelize.define
                 primaryKey: true
             },
 
-              vehicle_category:{
-                type:DataTypes.ENUM("car", "bike","auto"),
-                 allowNull:false
+            vehicle_category: {
+                type: DataTypes.ENUM("car", "bike", "auto"),
+                allowNull: false
 
-              },
+            },
             name: {
                 type: DataTypes.STRING,
                 allowNull: false
             },
+
+            user_id: {
+                type: DataTypes.INTEGER,
+                allowNull: false,
+                references: {
+                    model: User,
+                    key: "id"
+                }
+            },
+
             description: {
                 type: DataTypes.TEXT,
                 allowNull: false
@@ -34,18 +45,17 @@ const vehicleType = sequelize.define
             },
             base_fare: {
                 type: DataTypes.DECIMAL(10, 2),
-                allowNull: false
+                allowNull: true
             },
             per_km_rate: {
                 type: DataTypes.DECIMAL(10, 2),
-                allowNull: false
+                allowNull: true
 
             },
 
-
-        per_hour_rate: {
+            per_hour_rate: {
                 type: DataTypes.DECIMAL(10, 2),
-                allowNull: false
+                allowNull: true
             },
 
             status: {

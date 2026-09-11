@@ -1,9 +1,15 @@
+const { Driver } = require("../Models");
 const Vehicle = require("../Models/vehicle");
 const VehicleType = require("../Models/vehicle.Type");
 
 exports.create = async (req, res) => {
     try {
+        const driver = await Driver.findOne({
+            where: { "user_id": req.user.id }
+        })
         const vehicle = await Vehicle.create({
+            user_id: req.user.id,
+            driver_id: driver.id,
             vehicle_type_id: req.body.vehicle_type_id,
             registration_no: req.body.registration_no,
             vehicle_name: req.body.vehicle_name,
@@ -43,6 +49,37 @@ exports.getByVehicleId = async (req, res) => {
         const vehicle = await Vehicle.findOne({
             where: {
                 id: vehicle_id
+            }
+        });
+
+        if (!vehicle) {
+            return res.status(404).json({
+                message: "Vehicle not found"
+            });
+        }
+
+        res.status(200).json({
+            message: "Vehicle fetched successfully",
+            data: vehicle
+        });
+
+    } catch (error) {
+
+        res.status(500).json({
+            message: "Failed to fetch vehicle",
+            error: error.message
+        });
+
+    }
+};
+
+
+exports.findByDriver = async (req, res) => {
+    try {
+
+        const vehicle = await Vehicle.findAll({
+            where: {
+                user_id: req.user.id
             }
         });
 

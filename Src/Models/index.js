@@ -8,6 +8,7 @@ const Booking = require("./booking");
 const DriverVehicle = require("./driverVehicle");
 const Role = require("./role");
 const Trip = require("./trip");
+const vehicleType = require("./vehicle.Type");
 
 
 // ================= USER ASSOCIATIONS =================
@@ -150,6 +151,18 @@ Trip.belongsTo(VehicleType, {
     as: "vehicleType"
 });
 // ================= EXPORT =================
+
+Driver.hasOne(Vehicle, { // or hasMany
+  foreignKey: "driver_id",
+  as: "vehicle"
+});
+
+// Vehicle belongs to a Driver
+Vehicle.belongsTo(Driver, {
+  foreignKey: "driver_id",
+  as: "driver" // Changed alias from "vehicle" to "driver"
+});
+
 
 module.exports = {
     Role,

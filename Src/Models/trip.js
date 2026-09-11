@@ -1,5 +1,9 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
+const User = require("./user");
+const Vehicle = require("./vehicle");
+const vehicleType = require("./vehicle.Type");
+
 
 const Trip = sequelize.define(
     "Trip",
@@ -12,22 +16,42 @@ const Trip = sequelize.define(
 
         driver_id: {
             type: DataTypes.INTEGER,
-            allowNull: false
+            allowNull: false,
+            references: {
+                model: User,
+                key: "id"
+            }
         },
+
         agent_id: {
-    type: DataTypes.INTEGER,
-    allowNull: false
-},
-
-        vehicle_id: {
             type: DataTypes.INTEGER,
-            allowNull: false
+            allowNull: false,
+            references: {
+                model: User,
+                key: "id"
+            }
         },
 
-        vehicle_type_id: {
-            type: DataTypes.INTEGER,
-            allowNull: false
-        },
+
+          vehicle_id: {
+                type: DataTypes.INTEGER,
+                allowNull: false,
+                references: {
+                    model: Vehicle,
+                    key: "id"
+                }
+            },
+
+
+          vehicle_type_id: {
+                type: DataTypes.INTEGER,
+                allowNull: false,
+                references: {
+                    model: vehicleType,
+                    key: "id"
+                }
+            },
+
 
         pickup_address: {
             type: DataTypes.STRING,

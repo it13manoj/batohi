@@ -32,8 +32,11 @@ const tripRoute = require("./Src/Routes/trip.route")
 
 
 app.use(cors({
-    origin:["http://localhost:9000","http://192.168.29.21:9000"]
-}))
+  origin: ["http://localhost:9000", "http://192.168.29.21:9000"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true
+}));
 app.use(express.json());
 app.use(bodyparser.urlencoded({ extended: true }));
 app.use(

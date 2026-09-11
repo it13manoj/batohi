@@ -1,10 +1,11 @@
 const fs = require("fs");
 const path = require("path");
-const { Driver, User, Role } = require("../Models");
+const { Driver, User, Role, Vehicle } = require("../Models");
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken')
 const booking = require("../Models/booking")
-const bookingItem = require("../Models/booking.Item")
+const bookingItem = require("../Models/booking.Item");
+const sendResponse = require("../Utils/reponse");
 
 
 
@@ -105,6 +106,9 @@ exports.profile = async (req, res) => {
         const userType = req.user.type;
 
         const { firstName, lastName, gender, dateOfBirth, address, city, state, pincode, mobileNo, driverCode, licenseExpiryDate, experienceYears, aadhaarNumber, alternateMobile, drivingLicenseNo, licenseIssueDate, panNumber, emergencyContactName, emergencyContactNumber } = req.body
+
+        console.log(firstName, lastName, gender, dateOfBirth, address, city, state, pincode, mobileNo, driverCode, licenseExpiryDate, experienceYears, aadhaarNumber, alternateMobile, drivingLicenseNo, licenseIssueDate, panNumber, emergencyContactName, emergencyContactNumber);
+
 
         let profileImage = req.files?.profileImage?.[0];
         let adharImage = req.files?.adharImage?.[0];
@@ -256,4 +260,109 @@ exports.getProfile = async (req, res) => {
     }
 };
 
+
+exports.dashboard = async (req, res) => {
+    try {
+        // 1. Validate that user_id exists on req
+        if (!req.user.id) {
+            return sendResponse(res, 401, "Unauthorized: User ID missing");
+        }
+
+        // 2. Fetch driver data with inclusions
+        const response = await Driver.findOne({
+            where: {
+                user_id: req.user.id,
+                status: "active"
+            },
+            include: [
+                {
+                    model: User,
+                    as: "user",
+                    attributes: {
+                        exclude: ["password_hash"]
+                    }
+                },
+                {
+                    model: Vehicle,
+                    as: "vehicle",
+                    where: {
+                        status: "active"
+                    }
+                }
+            ]
+        });
+
+        // 3. Handle non-existent driver record
+        if (!response) {
+            return sendResponse(res, 404, "Driver record not found");
+        }
+
+        // 4. Return success response
+        return sendResponse(res, 200, "Successfully fetched records!", response);
+
+    } catch (error) {
+        // 5. Handle unexpected server errors
+        console.error("Dashboard Fetch Error:", error);
+        return sendResponse(res, 500, "An internal server error occurred", error.message);
+    }
+};
+
+
+exports.status = async (req, res) => {
+    try {
+        let { id } = req.params;
+
+        if (id==="null") {
+            // Verify user context exists
+            if (!req.user?.id) {
+                return res.status(401).json({ success: false, message: "Unauthorized user" });
+            }
+
+            // 2. Fallback to driver record using logged-in user's ID
+            const driver = await Driver.findOne({ where: { user_id: req.user.id } });
+            if (!driver) {
+                return res.status(404).json({ success: false, message: "Driver record not found" });
+            }
+            id = driver.id;
+        }
+
+       
+        
+        // 1. Find the driver by primary key
+        const driver = await Driver.findByPk(id);
+
+
+
+        // 2. Handle missing record
+        if (!driver) {
+            return res.status(404).json({
+                success: false,
+                message: "Driver not found"
+            });
+        }
+
+        // 3. Toggle the status (adjust property name if using driver.state)
+        const newStatus = driver.status === "active" ? "inactive" : "active";
+
+        // 4. Update using standard Sequelize syntax
+        await Driver.update(
+            { status: newStatus }, // Values to update
+            { where: { id } }     // Query conditions
+        );
+
+        // 5. Send HTTP response back to client
+        return res.status(200).json({
+            success: true,
+            message: `Driver status updated to ${newStatus}`,
+            status: newStatus
+        });
+
+    } catch (error) {
+        console.error("Error toggling driver status:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+};
 

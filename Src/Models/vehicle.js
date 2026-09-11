@@ -1,5 +1,8 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
+const User = require("./user");
+const Driver = require("./driver");
+const vehicleType = require("./vehicle.Type");
 
 const Vehicle = sequelize.define("Vehicle", {
     id: {
@@ -8,13 +11,22 @@ const Vehicle = sequelize.define("Vehicle", {
         primaryKey: true
     },
 
-vehicle_type_id: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-        model: "vehicle_types",
-        key: "id"
-    }
+    vehicle_type_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+            model: vehicleType,
+            key: "id"
+        }
+    },
+
+    driver_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+            model: Driver,
+            key: "id"
+        }
     },
 
     registration_no: {
@@ -22,6 +34,16 @@ vehicle_type_id: {
         allowNull: false,
         unique: true
     },
+
+    user_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+            model: User,
+            key: "id"
+        }
+    },
+
 
     vehicle_name: {
         type: DataTypes.STRING,
