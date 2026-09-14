@@ -81,6 +81,10 @@ const User = sequelize.define(
             type: DataTypes.DATE,
             allowNull: true
         },
+        device_token:{
+             type: DataTypes.TEXT,
+             allowNull: true
+        },
 
         created_at: {
             type: DataTypes.DATE,

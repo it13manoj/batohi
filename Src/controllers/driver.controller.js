@@ -6,8 +6,13 @@ const jwt = require('jsonwebtoken')
 const booking = require("../Models/booking")
 const bookingItem = require("../Models/booking.Item");
 const sendResponse = require("../Utils/reponse");
+require('../config/firebaseAdmin')
+const { Op } = require("sequelize");
+const sendPushNotification = require('../Utils/notification')
 
 
+const { getMessaging } = require('firebase-admin/messaging');
+const Booked = require("../Models/booked");
 
 exports.create = async (req, res) => {
     try {
@@ -312,7 +317,7 @@ exports.status = async (req, res) => {
     try {
         let { id } = req.params;
 
-        if (id==="null") {
+        if (id === "null") {
             // Verify user context exists
             if (!req.user?.id) {
                 return res.status(401).json({ success: false, message: "Unauthorized user" });
@@ -326,8 +331,8 @@ exports.status = async (req, res) => {
             id = driver.id;
         }
 
-       
-        
+
+
         // 1. Find the driver by primary key
         const driver = await Driver.findByPk(id);
 
@@ -366,3 +371,251 @@ exports.status = async (req, res) => {
     }
 };
 
+
+exports.findRider = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { to, from, latitude_to, longitude_to, latitude_from, longitude_from, fare, distance } = req.body
+
+        const rider = await Driver.findByPk(id, {
+            include: [
+                {
+                    model: User,
+                    as: "user",
+                    attributes: {
+                        exclude: ["password_hash"]
+                    }
+                },
+            ]
+        });
+
+        if (!rider) {
+            return res.status(404).json({
+                success: false,
+                message: "Rider not found"
+            });
+        }
+
+        if (!rider.user || !rider.user.device_token) {
+            return res.status(400).json({
+                success: false,
+                message: "Driver device token is not registered for notifications"
+            });
+        }
+
+        const message = {
+            token: rider.user.device_token,
+            notification: {
+                title: 'New Ride Request',
+                body: 'A rider is waiting for you!'
+            },
+            data: {
+                type: 'ride_request',
+                riderId: String(id)
+            },
+            android: {
+                priority: 'high',
+                notification: {
+                    channelId: 'batohi_rides',
+                    sound: 'default'
+                }
+            },
+            apns: {
+                payload: {
+                    aps: {
+                        sound: 'default',
+                        contentAvailable: true
+                    }
+                }
+            },
+            webpush: {
+                notification: {
+                    title: 'New Ride Request',
+                    body: 'You have a new ride request. Please check!',
+                    icon: '/assets/notification.png',
+                    requireInteraction: true
+                },
+                fcmOptions: {
+                    link: '/'
+                }
+            }
+        }
+
+        const response = await getMessaging().send(message)
+        const userId = req.user.id;
+        const newBooking = await Booked.create({
+            user_id: userId,
+            to: to,
+            from: from,
+            latitude_to: latitude_to,
+            longitude_to: longitude_to,
+            latitude_from: latitude_from,
+            longitude_from: longitude_from,
+            fare: fare,
+            distance: distance,
+            driver_id: rider.user_id || null,
+            status: 'pending' // explicit status initialization
+        });
+
+
+        return res.status(200).json({
+            success: true,
+            message: 'Notification sent successfully',
+            fcmResponse: response,
+            data: rider
+        });
+
+    } catch (error) {
+        console.error("Find Rider Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+};
+
+exports.listOfBookedUsers = async (req, res) => {
+    try {
+        // 1. Calculate the start of today (00:00:00)
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+
+        // 2. Fetch pending bookings for this driver created today
+        const response = await Booked.findAll({
+            where: {
+                status: "pending",
+                driver_id: req.user.id
+
+            },
+            include: [
+                {
+                    model: User,
+                    as: "rider",
+                    attributes: ["id", "username", "email", "mobile_no"] // Exclude sensitive fields like password
+                }
+            ],
+            order: [["created_at", "DESC"]] // Show most recent requests first
+        });
+
+        return res.status(200).json({
+            success: true,
+            count: response.length,
+            data: response
+        });
+
+    } catch (error) {
+        console.error("Error in listOfBookedUsers:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch pending ride requests.",
+            error: error.message
+        });
+    }
+};
+
+
+exports.acceptRide = async (req, res) => {
+    try {
+        const { bookingId } = req.params
+        const driverId = req.user.id // Assumes auth middleware sets req.user
+
+        // 1. Find the pending booking assigned to this driver
+        const booking = await Booked.findOne({
+            where: {
+                id: bookingId,
+                driver_id: driverId,
+                status: 'pending'
+            }
+        })
+
+        if (!booking) {
+            return res.status(404).json({
+                success: false,
+                message: 'Ride request not found or already processed.'
+            })
+        }
+
+        // 2. Update status to accepted
+        booking.status = 'accepted'
+        await booking.save()
+
+        const rider = await User.findByPk(booking.user_id)
+        if (rider && rider.device_token) {
+            await sendPushNotification(rider.device_token, {
+                title: 'Ride Accepted! 🚗',
+                body: 'Your driver is on the way to pick you up.',
+                icon: './assets/notification.png',
+                data: {
+                    booking_id: booking.id,
+                    status: 'accepted'
+                }
+            })
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'Ride accepted successfully.',
+            booking
+        })
+    } catch (error) {
+        console.error('Error in acceptRide:', error)
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to accept ride request.',
+            error: error.message
+        })
+    }
+}
+
+// REJECT RIDE REQUEST
+exports.rejectRide = async (req, res) => {
+    try {
+        const { bookingId } = req.params
+        const driverId = req.user.id
+
+        const booking = await Booked.findOne({
+            where: {
+                id: bookingId,
+                driver_id: driverId,
+                status: 'pending'
+            }
+        })
+
+        if (!booking) {
+            return res.status(404).json({
+                success: false,
+                message: 'Ride request not found or already processed.'
+            })
+        }
+
+        // Update status to rejected
+        booking.status = 'rejected'
+        await booking.save()
+        const rider = await User.findByPk(booking.user_id)
+        if (rider && rider.device_token) {
+            await sendPushNotification(rider.device_token, {
+                title: 'Ride Request Declined ❌',
+                body: 'Your driver is unavailable. We are searching for another driver.',
+                icon: './assets/notification.png',
+                data: {
+                    booking_id: booking.id,
+                    status: 'rejected'
+                }
+            })
+        }
+        return res.status(200).json({
+            success: true,
+            message: 'Ride request rejected.',
+            booking
+        })
+    } catch (error) {
+        console.error('Error in rejectRide:', error)
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to reject ride request.',
+            error: error.message
+        })
+    }
+}

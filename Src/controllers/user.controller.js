@@ -474,7 +474,7 @@ exports.findNearestDrivers = async (req, res) => {
 
         // Build Vehicle filter if vehicleType is provided
         const vehicleTypeFilter = {};
-  
+
 
         // Query active drivers nearby
         const drivers = await Driver.findAll({
@@ -486,7 +486,7 @@ exports.findNearestDrivers = async (req, res) => {
                 {
                     model: User,
                     as: "user",
-                    attributes: ["id", "username", "mobile_no", "latitude", "longitude"],
+                    attributes: ["id", "username", "mobile_no", "latitude", "longitude","device_token"],
                     where: {
                         latitude: { [Op.ne]: null },
                         longitude: { [Op.ne]: null }
@@ -549,6 +549,64 @@ exports.findNearestDrivers = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Server error searching for nearby drivers."
+        });
+    }
+};
+
+exports.deviceToken = async (req, res) => {
+    try {
+        const { deviceToken } = req.body;
+        const userId = req.user.id;
+
+        if (!deviceToken) {
+            return res.status(400).json({
+                success: false,
+                message: 'Device token is required'
+            });
+        }
+        // Check user
+        const user = await User.findOne({
+            where: {
+                id: userId
+            },
+            logging: console.log
+        });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        // Update token
+        const [updatedRows] = await User.update(
+            {
+                device_token: deviceToken
+            },
+            {
+                where: {
+                    id: userId
+                },
+                logging: console.log
+            }
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: 'Device token saved successfully',
+            data: {
+                userId,
+                updatedRows
+            }
+        });
+
+    } catch (error) {
+        console.error('Error saving device token:', error);
+
+        return res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: error.message
         });
     }
 };

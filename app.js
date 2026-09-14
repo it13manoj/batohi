@@ -1,9 +1,11 @@
 require("dotenv").config();
+
 const http = require('http');
 const express = require("express");
 const { PORT } = process.env
 const app = express();
 const cors = require("cors")
+
 const path = require("path"); 
 const swaggerUi = require("swagger-ui-express");
 const swaggerSpec = require("./Src/swagger/swagger");
@@ -49,10 +51,18 @@ app.use(bodyparser.urlencoded({ limit: '50mb', extended: true }));
 app.use(
     "/uploads",
     express.static(path.join(__dirname, "Src/uploads"))
-   
-    
 );
 
+app.use(
+    "/assets",
+    express.static(path.join(__dirname, "Src/assets"))
+);
+
+app.get('/firebase-messaging-sw.js', (req, res) => {
+  res.sendFile(path.join(__dirname, 'firebase-messaging-sw.js'));
+});
+
+require('./Src/config/firebaseAdmin')
 
 app.use("/api/v1/role", roleRoutes);
 app.use("/api/v1/users", userRoute);
