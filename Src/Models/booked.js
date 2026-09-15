@@ -75,6 +75,7 @@ const Booked = sequelize.define(
       type: DataTypes.ENUM(
         "pending",
         "accepted",
+        "confirmed",
         "rejected",
         "completed",
         "cancelled"

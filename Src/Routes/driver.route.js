@@ -1,5 +1,5 @@
 const express = require("express");
-const { create, getProfile, login, profile, dashboard, status, findRider, listOfBookedUsers, acceptRide, rejectRide } = require("../controllers/driver.controller");
+const { create, getProfile, login, profile, dashboard, status, findRider, listOfBookedUsers, acceptRide, rejectRide, bookedStatus, booked, startRide } = require("../controllers/driver.controller");
 const authMiddleware = require("../Middleware/auth.middleware");
 const { upload } = require("../Utils/upload");
 
@@ -33,4 +33,12 @@ Route.post("/:id/find-ride", authMiddleware, findRider)
 Route.get("/find/pending/ride", authMiddleware, listOfBookedUsers)
 Route.put('/accept-ride/:bookingId', authMiddleware, acceptRide)
 Route.put('/reject-ride/:bookingId', authMiddleware, rejectRide)
+Route.get("/bookings/status/:id", authMiddleware, bookedStatus)
+
+Route.get("/find/all/ride", authMiddleware, booked)
+Route.post("/start/ride", authMiddleware, startRide)
+
+
+
+
 module.exports = Route; 

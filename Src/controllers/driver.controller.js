@@ -13,6 +13,8 @@ const sendPushNotification = require('../Utils/notification')
 
 const { getMessaging } = require('firebase-admin/messaging');
 const Booked = require("../Models/booked");
+const generateOTP = require("../Utils/otp");
+const OTP = require("../Models/otp");
 
 exports.create = async (req, res) => {
     try {
@@ -456,13 +458,19 @@ exports.findRider = async (req, res) => {
             driver_id: rider.user_id || null,
             status: 'pending' // explicit status initialization
         });
+        const otp = generateOTP(6);
+
+        await OTP.create({
+            booked_id: newBooking.id,
+            otp: otp
+        })
 
 
         return res.status(200).json({
             success: true,
             message: 'Notification sent successfully',
             fcmResponse: response,
-            data: rider
+            data: newBooking
         });
 
     } catch (error) {
@@ -478,25 +486,30 @@ exports.findRider = async (req, res) => {
 
 exports.listOfBookedUsers = async (req, res) => {
     try {
-        // 1. Calculate the start of today (00:00:00)
-        const startOfToday = new Date();
-        startOfToday.setHours(0, 0, 0, 0);
+        // 1. Build where clause dynamically based on user type
+        const whereCondition = {
+            status: {
+                [Op.in]: ["pending", "accepted"] // Matches records where status is pending OR accepted
+            }
+        };
 
-        // 2. Fetch pending bookings for this driver created today
+        if (req.user.type === "DRIVER") {
+            whereCondition.driver_id = req.user.id;
+        } else {
+            whereCondition.user_id = req.user.id;
+        }
+
+        // 2. Fetch pending bookings matching the user ID
         const response = await Booked.findAll({
-            where: {
-                status: "pending",
-                driver_id: req.user.id
-
-            },
+            where: whereCondition,
             include: [
                 {
                     model: User,
                     as: "rider",
-                    attributes: ["id", "username", "email", "mobile_no"] // Exclude sensitive fields like password
+                    attributes: ["id", "username", "email", "mobile_no"]
                 }
             ],
-            order: [["created_at", "DESC"]] // Show most recent requests first
+            order: [["created_at", "DESC"]] // Most recent requests first
         });
 
         return res.status(200).json({
@@ -514,7 +527,6 @@ exports.listOfBookedUsers = async (req, res) => {
         });
     }
 };
-
 
 exports.acceptRide = async (req, res) => {
     try {
@@ -619,3 +631,202 @@ exports.rejectRide = async (req, res) => {
         })
     }
 }
+
+exports.bookedStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const whereCondition = {
+            id: Number(id) // Ensure ID is cast to a Number
+        };
+
+        // Conditionally check user type
+        if (req.user && req.user.type === "DRIVER") {
+            whereCondition.driver_id = req.user.id;
+        } else if (req.user) {
+            whereCondition.user_id = req.user.id;
+        }
+
+        const response = await Booked.findOne({
+            where: whereCondition,
+            include: [
+                {
+                    model: User,
+                    as: "rider",
+                    attributes: ["id", "username", "email", "mobile_no", "latitude", "longitude"]
+                },
+                {
+                    model: OTP,
+                    as: "otp", // Match the alias defined in Booked.hasOne / Booked.hasMany
+                    required: false // Optional: prevents query failure if no OTP row exists yet
+                },
+                {
+                    model: User,
+                    as: "driver",
+                    attributes: ["id", "username", "email", "mobile_no", "latitude", "longitude"],
+                    include: [{
+                        model: Driver,
+                        as: "driver",
+                        required: false,
+                        where: { status: "active" },
+                        include: [{
+                            model: Vehicle,
+                            as: "vehicle",
+                            required: false,
+                            where: { status: "active" }
+                        }]
+                    }]
+                }
+            ]
+        });
+        if (!response) {
+            console.log("No record found for condition:", whereCondition);
+            return res.status(404).json({
+                success: false,
+                message: "Booking record not found or unauthorized access."
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: response
+        });
+
+    } catch (error) {
+        console.error("Error in bookedStatus:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch booking status.",
+            error: error.message
+        });
+    }
+};
+
+exports.booked = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const userType = req.user.type;
+
+        // 1. Correctly isolate queries based on role
+        let whereCondition = {};
+        if (userType === "DRIVER") {
+            whereCondition = { driver_id: userId };
+        } else {
+            whereCondition = { user_id: userId };
+        }
+
+        const response = await Booked.findAll({
+            where: whereCondition,
+            include: [
+                {
+                    model: User,
+                    as: "rider",
+                    attributes: ["id", "username", "email", "mobile_no", "latitude", "longitude"]
+                },
+                {
+                    model: User,
+                    as: "driver",
+                    attributes: ["id", "username", "email", "mobile_no", "latitude", "longitude"],
+                    include: [
+                        {
+                            model: Driver,
+                            as: "driver",
+                            // required: false prevents INNER JOIN from excluding historical/cancelled rides
+                            required: false,
+                            where: { status: "active" },
+                            include: [
+                                {
+                                    model: Vehicle,
+                                    as: "vehicle",
+                                    required: false,
+                                    where: { status: "active" }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            // Fix Sequelize syntax for ordering
+            order: [["id", "DESC"]]
+        });
+
+        // 2. Handle empty results safely (findAll returns an array [])
+        if (!response || response.length === 0) {
+            return res.status(200).json({
+                success: true,
+                data: [],
+                message: "No booking records found."
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: response
+        });
+
+    } catch (error) {
+        console.error("Error in booked controller:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch booking status.",
+            error: error.message
+        });
+    }
+};
+
+exports.startRide = async (req, res) => {
+  try {
+    const { booking_id, otp } = req.body;
+
+    // 1. Verify OTP with await
+    const otpRecord = await OTP.findOne({
+      where: {
+        booked_id: booking_id,
+        otp: otp
+      }
+    });
+
+    if (!otpRecord) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP or Booking ID"
+      });
+    }
+
+    // 2. Update booking status using the correct booking_id
+    const [updatedRows] = await Booked.update(
+      { status: "confirmed" },
+      {
+        where: {
+          id: booking_id
+        }
+      }
+    );
+
+    if (updatedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking record not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Ride started successfully",
+      data: {
+        booking_id,
+        status: "confirmed"
+      }
+    });
+
+  } catch (error) {
+    console.error("Error starting ride:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error while starting ride",
+      error: error.message
+    });
+  }
+};
+
+
+
