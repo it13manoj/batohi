@@ -16,6 +16,8 @@ const Booked = require("../Models/booked");
 const generateOTP = require("../Utils/otp");
 const OTP = require("../Models/otp");
 
+const DEFAULT_NOTIFICATION_ICON = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 24 24" fill="%234CAF50"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
+
 exports.create = async (req, res) => {
     try {
 
@@ -409,7 +411,7 @@ exports.findRider = async (req, res) => {
             token: rider.user.device_token,
             notification: {
                 title: 'New Ride Request',
-                body: 'A rider is waiting for you!'
+                body: 'You have a new ride request. Please check!'
             },
             data: {
                 type: 'ride_request',
@@ -434,7 +436,7 @@ exports.findRider = async (req, res) => {
                 notification: {
                     title: 'New Ride Request',
                     body: 'You have a new ride request. Please check!',
-                    icon: '/assets/notification.png',
+                    icon: DEFAULT_NOTIFICATION_ICON,
                     requireInteraction: true
                 },
                 fcmOptions: {
@@ -561,7 +563,7 @@ exports.acceptRide = async (req, res) => {
             await sendPushNotification(rider.device_token, {
                 title: 'Ride Accepted! 🚗',
                 body: 'Your driver is on the way to pick you up.',
-                icon: './assets/notification.png',
+                icon: DEFAULT_NOTIFICATION_ICON,
                 data: {
                     booking_id: booking.id,
                     status: 'accepted'
@@ -613,7 +615,7 @@ exports.rejectRide = async (req, res) => {
             await sendPushNotification(rider.device_token, {
                 title: 'Ride Request Declined ❌',
                 body: 'Your driver is unavailable. We are searching for another driver.',
-                icon: './assets/notification.png',
+                icon: DEFAULT_NOTIFICATION_ICON,
                 data: {
                     booking_id: booking.id,
                     status: 'rejected'
@@ -663,7 +665,7 @@ exports.completeRide = async (req, res) => {
             await sendPushNotification(rider.device_token, {
                 title: 'Ride successfully completed!',
                 body: 'Your ride is completed. thanks for visiting',
-                icon: './assets/notification.png',
+                icon: DEFAULT_NOTIFICATION_ICON,
                 data: {
                     booking_id: booking.id,
                     status: 'completed'
@@ -713,7 +715,7 @@ exports.cancelRide = async (req, res) => {
             await sendPushNotification(rider.device_token, {
                 title: 'Ride successfully cancelled!',
                 body: 'Your ride is completed. thanks for visiting',
-                icon: './assets/notification.png',
+                icon: DEFAULT_NOTIFICATION_ICON,
                 data: {
                     booking_id: booking.id,
                     status: 'cancelled'
