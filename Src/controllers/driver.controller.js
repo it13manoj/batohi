@@ -443,6 +443,9 @@ exports.findRider = async (req, res) => {
             }
         }
 
+
+        const distanceInKm = calculateDistance(latitude_to,longitude_to,latitude_from, longitude_from, 'km');
+
         const response = await getMessaging().send(message)
         const userId = req.user.id;
         const newBooking = await Booked.create({
@@ -454,7 +457,7 @@ exports.findRider = async (req, res) => {
             latitude_from: latitude_from,
             longitude_from: longitude_from,
             fare: fare,
-            distance: distance,
+            distance: `${distanceInKm.toFixed(2)} km`,
             driver_id: rider.user_id || null,
             status: 'pending' // explicit status initialization
         });
@@ -489,7 +492,7 @@ exports.listOfBookedUsers = async (req, res) => {
         // 1. Build where clause dynamically based on user type
         const whereCondition = {
             status: {
-                [Op.in]: ["pending", "accepted"] // Matches records where status is pending OR accepted
+                [Op.in]: ["pending", "accepted","confirmed"] // Matches records where status is pending OR accepted
             }
         };
 
@@ -631,6 +634,108 @@ exports.rejectRide = async (req, res) => {
         })
     }
 }
+
+exports.completeRide = async (req, res) => {
+    try {
+        const { bookingId } = req.params
+        const driverId = req.user.id
+
+        const booking = await Booked.findOne({
+            where: {
+                id: bookingId,
+                driver_id: driverId,
+                status: 'confirmed'
+            }
+        })
+
+        if (!booking) {
+            return res.status(404).json({
+                success: false,
+                message: 'Ride request not found or already processed.'
+            })
+        }
+
+        // Update status to rejected
+        booking.status = 'completed'
+        await booking.save()
+        const rider = await User.findByPk(booking.user_id)
+        if (rider && rider.device_token) {
+            await sendPushNotification(rider.device_token, {
+                title: 'Ride successfully completed!',
+                body: 'Your ride is completed. thanks for visiting',
+                icon: './assets/notification.png',
+                data: {
+                    booking_id: booking.id,
+                    status: 'completed'
+                }
+            })
+        }
+        return res.status(200).json({
+            success: true,
+            message: 'Ride request completed.',
+            booking
+        })
+    } catch (error) {
+        console.error('Error in completedRide:', error)
+        return res.status(500).json({
+            success: false,
+            message: 'completed ride request.',
+            error: error.message
+        })
+    }
+}
+
+exports.cancelRide = async (req, res) => {
+    try {
+        const { bookingId } = req.params
+        const driverId = req.user.id
+
+        const booking = await Booked.findOne({
+            where: {
+                id: bookingId,
+                user_id: driverId,
+                status: 'pending'
+            }
+        })
+
+        if (!booking) {
+            return res.status(404).json({
+                success: false,
+                message: 'Ride request not found or already processed.'
+            })
+        }
+
+        // Update status to rejected
+        booking.status = 'cancelled'
+        await booking.save()
+        const rider = await User.findByPk(booking.user_id)
+        if (rider && rider.device_token) {
+            await sendPushNotification(rider.device_token, {
+                title: 'Ride successfully cancelled!',
+                body: 'Your ride is completed. thanks for visiting',
+                icon: './assets/notification.png',
+                data: {
+                    booking_id: booking.id,
+                    status: 'cancelled'
+                }
+            })
+        }
+        return res.status(200).json({
+            success: true,
+            message: 'Ride request cancelled.',
+            booking
+        })
+    } catch (error) {
+        console.error('Error in cancelledRide:', error)
+        return res.status(500).json({
+            success: false,
+            message: 'cancelled ride request.',
+            error: error.message
+        })
+    }
+}
+
+
 
 exports.bookedStatus = async (req, res) => {
     try {
@@ -827,6 +932,89 @@ exports.startRide = async (req, res) => {
     });
   }
 };
+
+exports.bothLocation = async (req, res) => {
+    try {
+        const response = await Booked.findOne({
+            where: {
+                status: "accepted",
+                driver_id: req.user.id
+            },
+            include: [
+                {
+                    model: User,
+                    as: "rider",
+                    // Explicitly fetch ONLY coordinates
+                    attributes: ["id", "latitude", "longitude"]
+                },
+                {
+                    model: User,
+                    as: "driver",
+                    // Explicitly fetch ONLY coordinates
+                    attributes: ["id", "latitude", "longitude"]
+                }
+            ]
+        });
+
+        if (!response) {
+            return res.status(404).json({
+                success: false,
+                message: "Booking not found or unauthorized access."
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: response
+        });
+
+    } catch (error) {
+        console.error("Error fetching location data:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+};
+
+
+/**
+ * Calculates the distance between two coordinates using the Haversine formula.
+ * @param {number} lat1 - Latitude of point 1
+ * @param {number} lon1 - Longitude of point 1
+ * @param {number} lat2 - Latitude of point 2
+ * @param {number} lon2 - Longitude of point 2
+ * @param {string} unit - 'km' (default), 'm' (meters), or 'miles'
+ * @returns {number} Distance in chosen unit
+ */
+function calculateDistance(lat1, lon1, lat2, lon2, unit = 'km') {
+  const EARTH_RADIUS_KM = 6371; // Earth's mean radius in kilometers
+
+  // Convert degrees to radians
+  const toRadians = (degree) => (degree * Math.PI) / 180;
+
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+
+  const radLat1 = toRadians(lat1);
+  const radLat2 = toRadians(lat2);
+
+  // Haversine formula
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(radLat1) * Math.cos(radLat2) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distanceKm = EARTH_RADIUS_KM * c;
+
+  // Convert output unit
+  if (unit === 'm') return distanceKm * 1000;
+  if (unit === 'miles') return distanceKm * 0.621371;
+  return distanceKm; // Default: km
+}
+
 
 
 
