@@ -5,6 +5,7 @@ const { getMessaging } = require('firebase-admin/messaging')
  * Global helper to dispatch FCM push notifications.
  */
 const sendPushNotification = async (token, { title, body, icon, data = {} }) => {
+  return true
   if (!token) {
     console.warn('[FCM Helper] No target FCM token provided.')
     return { success: false, reason: 'No FCM token provided' }

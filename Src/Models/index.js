@@ -9,6 +9,10 @@ const DriverVehicle = require("./driverVehicle");
 const Role = require("./role");
 const Trip = require("./trip");
 const vehicleType = require("./vehicle.Type");
+const DriverSubscription = require("./DriverSubscription");
+const Transaction = require("./Transaction");
+const SubscriptionPlan = require("./SubscriptionPlan");
+const Coupon = require("./coupon");
 
 
 // ================= USER ASSOCIATIONS =================
@@ -153,15 +157,28 @@ Trip.belongsTo(VehicleType, {
 // ================= EXPORT =================
 
 Driver.hasOne(Vehicle, { // or hasMany
-  foreignKey: "driver_id",
-  as: "vehicle"
+    foreignKey: "driver_id",
+    as: "vehicle"
 });
 
 // Vehicle belongs to a Driver
 Vehicle.belongsTo(Driver, {
-  foreignKey: "driver_id",
-  as: "driver" // Changed alias from "vehicle" to "driver"
+    foreignKey: "driver_id",
+    as: "driver" // Changed alias from "vehicle" to "driver"
 });
+
+Driver.hasMany(DriverSubscription, { foreignKey: 'driver_id', onDelete: 'CASCADE' });
+DriverSubscription.belongsTo(Driver, { foreignKey: 'driver_id' });
+
+Driver.hasMany(Transaction, { foreignKey: 'driver_id' });
+Transaction.belongsTo(Driver, { foreignKey: 'driver_id' });
+
+// Plan Associations
+SubscriptionPlan.hasMany(DriverSubscription, { foreignKey: 'plan_id' , as: 'subscriptionplan' });
+DriverSubscription.belongsTo(SubscriptionPlan, { foreignKey: 'plan_id'  , as: 'subscriptionplan'});
+
+SubscriptionPlan.hasMany(Transaction, { foreignKey: 'plan_id' });
+Transaction.belongsTo(SubscriptionPlan, { foreignKey: 'plan_id' });
 
 
 module.exports = {
@@ -174,5 +191,9 @@ module.exports = {
     VehicleType,
     Booking,
     DriverVehicle,
-    Trip
+    Trip,
+    SubscriptionPlan,
+    DriverSubscription,
+    Transaction,
+    Coupon,
 };

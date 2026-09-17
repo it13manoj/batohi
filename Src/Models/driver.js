@@ -186,6 +186,21 @@ const Driver = sequelize.define(
             ),
             defaultValue: "pending"
         },
+        vehicleCategory: {
+            type: DataTypes.ENUM('bike', 'auto', 'cab'),
+            defaultValue: 'bike',
+            field: 'vehicle_category',
+        },
+        isVerified: {
+            type: DataTypes.BOOLEAN,
+            defaultValue: false,
+            field: 'is_verified',
+        },
+        isProfileCompleted: {
+            type: DataTypes.BOOLEAN,
+            defaultValue: false,
+            field: 'is_profile_completed',
+        },
 
         /* Availability */
 

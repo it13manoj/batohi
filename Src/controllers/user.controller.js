@@ -322,7 +322,7 @@ exports.updateLocation = async (req, res) => {
         );
 
         if (updatedRows === 0) {
-            return sendResponse(res, 44, "User not found");
+            return sendResponse(res, 301, "User not found");
         }
 
         return sendResponse(res, 200, "Location updated successfully", {

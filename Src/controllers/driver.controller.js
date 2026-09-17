@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { Driver, User, Role, Vehicle } = require("../Models");
+const { Driver, User, Role, Vehicle, DriverSubscription, SubscriptionPlan } = require("../Models");
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken')
 const booking = require("../Models/booking")
@@ -9,7 +9,7 @@ const sendResponse = require("../Utils/reponse");
 require('../config/firebaseAdmin')
 const { Op } = require("sequelize");
 const sendPushNotification = require('../Utils/notification')
-
+const db = require('../config/database');
 
 const { getMessaging } = require('firebase-admin/messaging');
 const Booked = require("../Models/booked");
@@ -446,7 +446,7 @@ exports.findRider = async (req, res) => {
         }
 
 
-        const distanceInKm = calculateDistance(latitude_to,longitude_to,latitude_from, longitude_from, 'km');
+        const distanceInKm = calculateDistance(latitude_to, longitude_to, latitude_from, longitude_from, 'km');
 
         const response = await getMessaging().send(message)
         const userId = req.user.id;
@@ -494,7 +494,7 @@ exports.listOfBookedUsers = async (req, res) => {
         // 1. Build where clause dynamically based on user type
         const whereCondition = {
             status: {
-                [Op.in]: ["pending", "accepted","confirmed"] // Matches records where status is pending OR accepted
+                [Op.in]: ["pending", "accepted", "confirmed"] // Matches records where status is pending OR accepted
             }
         };
 
@@ -881,58 +881,58 @@ exports.booked = async (req, res) => {
 };
 
 exports.startRide = async (req, res) => {
-  try {
-    const { booking_id, otp } = req.body;
+    try {
+        const { booking_id, otp } = req.body;
 
-    // 1. Verify OTP with await
-    const otpRecord = await OTP.findOne({
-      where: {
-        booked_id: booking_id,
-        otp: otp
-      }
-    });
+        // 1. Verify OTP with await
+        const otpRecord = await OTP.findOne({
+            where: {
+                booked_id: booking_id,
+                otp: otp
+            }
+        });
 
-    if (!otpRecord) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid OTP or Booking ID"
-      });
-    }
-
-    // 2. Update booking status using the correct booking_id
-    const [updatedRows] = await Booked.update(
-      { status: "confirmed" },
-      {
-        where: {
-          id: booking_id
+        if (!otpRecord) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid OTP or Booking ID"
+            });
         }
-      }
-    );
 
-    if (updatedRows === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Booking record not found"
-      });
+        // 2. Update booking status using the correct booking_id
+        const [updatedRows] = await Booked.update(
+            { status: "confirmed" },
+            {
+                where: {
+                    id: booking_id
+                }
+            }
+        );
+
+        if (updatedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Booking record not found"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Ride started successfully",
+            data: {
+                booking_id,
+                status: "confirmed"
+            }
+        });
+
+    } catch (error) {
+        console.error("Error starting ride:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error while starting ride",
+            error: error.message
+        });
     }
-
-    return res.status(200).json({
-      success: true,
-      message: "Ride started successfully",
-      data: {
-        booking_id,
-        status: "confirmed"
-      }
-    });
-
-  } catch (error) {
-    console.error("Error starting ride:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error while starting ride",
-      error: error.message
-    });
-  }
 };
 
 exports.bothLocation = async (req, res) => {
@@ -991,32 +991,501 @@ exports.bothLocation = async (req, res) => {
  * @returns {number} Distance in chosen unit
  */
 function calculateDistance(lat1, lon1, lat2, lon2, unit = 'km') {
-  const EARTH_RADIUS_KM = 6371; // Earth's mean radius in kilometers
+    const EARTH_RADIUS_KM = 6371; // Earth's mean radius in kilometers
 
-  // Convert degrees to radians
-  const toRadians = (degree) => (degree * Math.PI) / 180;
+    // Convert degrees to radians
+    const toRadians = (degree) => (degree * Math.PI) / 180;
 
-  const dLat = toRadians(lat2 - lat1);
-  const dLon = toRadians(lon2 - lon1);
+    const dLat = toRadians(lat2 - lat1);
+    const dLon = toRadians(lon2 - lon1);
 
-  const radLat1 = toRadians(lat1);
-  const radLat2 = toRadians(lat2);
+    const radLat1 = toRadians(lat1);
+    const radLat2 = toRadians(lat2);
 
-  // Haversine formula
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(radLat1) * Math.cos(radLat2) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    // Haversine formula
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(radLat1) * Math.cos(radLat2) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
 
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const distanceKm = EARTH_RADIUS_KM * c;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distanceKm = EARTH_RADIUS_KM * c;
 
-  // Convert output unit
-  if (unit === 'm') return distanceKm * 1000;
-  if (unit === 'miles') return distanceKm * 0.621371;
-  return distanceKm; // Default: km
+    // Convert output unit
+    if (unit === 'm') return distanceKm * 1000;
+    if (unit === 'miles') return distanceKm * 0.621371;
+    return distanceKm; // Default: km
 }
 
 
 
+
+exports.getDriverStatus = async (req, res) => {
+    try {
+        const driverId = req.user.id;
+
+        const driver = await Driver.findOne({
+            where: { user_id: driverId }
+        });
+
+        if (!driver) {
+            return res.status(404).json({ success: false, message: 'Driver not found' });
+        }
+
+        const subscriptions = await DriverSubscription.findOne({
+            where: {
+                driver_id: req.user.id,
+                status: 'active',
+                end_date: {
+                    [Op.gt]: new Date()
+                }
+            },
+            include: [
+                {
+                    model: SubscriptionPlan,
+                    as: 'subscriptionplan'
+                }
+            ],
+            order: [['end_date', 'DESC']]
+        });
+
+        const trials = await DriverSubscription.findAll({
+            where: {
+                driver_id: req.user.id // or driverId
+            },
+            attributes: ['id'], // Selects only ds.id
+            include: [
+                {
+                    model: SubscriptionPlan,
+                    as: 'subscriptionplan',
+                    where: {
+                        is_free_trial: true
+                    },
+                    attributes: []
+                }
+            ]
+        });
+        // With type: QueryTypes.SELECT, subscriptions is an array directly
+        const activeSub = subscriptions || null;
+
+        res.json({
+            success: true,
+            data: {
+                vehicleCategory: driver.vehicleCategory || driver.vehicle_category,
+                isVerified: Boolean(driver.isVerified ?? driver.is_verified),
+                isProfileCompleted: Boolean(driver.isProfileCompleted ?? driver.is_profile_completed),
+                isSubscribed: !!activeSub,
+                isFreeTrialAvailable: trials.length === 0,
+                canTakeRides: Boolean(driver.isVerified ?? driver.is_verified) && !!activeSub,
+                activePlan: activeSub ? {
+                    id: activeSub.plan_id,
+                    title: activeSub.title,
+                    startDate: activeSub.start_date,
+                    endDate: activeSub.end_date
+                } : null
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+// Validate Coupon
+exports.validateCoupon = async (req, res) => {
+    try {
+        const { code } = req.body;
+        if (!code) return res.status(400).json({ success: false, message: 'Coupon code required' });
+
+        const [coupons] = await db.query(
+            'SELECT * FROM coupons WHERE code = ? AND is_active = TRUE',
+            [code.toUpperCase()]
+        );
+
+        if (coupons.length === 0) {
+            return res.status(400).json({ success: false, message: 'Invalid coupon code' });
+        }
+
+        res.json({
+            success: true,
+            discountAmount: parseFloat(coupons[0].discount_amount),
+            message: `Coupon applied! ₹${coupons[0].discount_amount} discount granted.`
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// Activate Free Trial
+exports.claimFreeTrial = async (req, res) => {
+    try {
+        const userId = req.user.id; // User ID from auth token
+        const { vehicleCategory = 'bike' } = req.body;
+
+        // 1. Find the Driver record associated with this User ID
+        const driver = await Driver.findOne({
+            where: { user_id: userId }
+        });
+
+        if (!driver) {
+            return res.status(404).json({
+                success: false,
+                message: 'Driver profile not found for this user'
+            });
+        }
+
+        const driverId = driver.id;
+
+        // 2. Check existing subscription for free trial status or expiration
+        const existingSubscription = await DriverSubscription.findOne({
+            where: { driverId: driverId }
+        });
+
+        if (existingSubscription) {
+            const now = new Date();
+            const expiryDate = new Date(existingSubscription.endDate);
+
+            // Check if current or previous subscription has expired
+            if (now > expiryDate || existingSubscription.status === 'expired') {
+                // Update status to expired if not updated already
+                if (existingSubscription.status !== 'expired') {
+                    await existingSubscription.update({ status: 'expired' });
+                }
+
+                return res.status(400).json({
+                    success: false,
+                    message: 'Your trial plan has expired'
+                });
+            }
+
+            // Check if driver already has an active subscription
+            if (existingSubscription.status === 'active') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'You already have an active subscription or trial'
+                });
+            }
+        }
+
+        // 3. Fetch the free trial plan
+        const plan = await SubscriptionPlan.findOne({
+            where: {
+                vehicle_category: vehicleCategory,
+                is_free_trial: true,
+                is_active: true
+            }
+        });
+
+        if (!plan) {
+            return res.status(400).json({
+                success: false,
+                message: 'No free trial plan available for this vehicle category'
+            });
+        }
+
+        // 4. Calculate dates
+        const startDate = new Date();
+        const endDate = new Date();
+        endDate.setDate(endDate.getDate() + (plan.totalDays || 30));
+
+        // 5. Create DriverSubscription using valid driverId
+        const subscription = await DriverSubscription.create({
+            driverId: driverId,
+            planId: plan.id,
+            startDate: startDate,
+            endDate: endDate,
+            status: 'active'
+        });
+
+        // 6. Update driver vehicle category preference
+        await driver.update({ vehicleCategory: vehicleCategory });
+
+        return res.status(200).json({
+            success: true,
+            message: 'Free trial activated successfully',
+            subscription: {
+                id: subscription.id,
+                title: plan.name,
+                startDate: startDate.toISOString(),
+                endDate: endDate.toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('Error claiming free trial:', error);
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+// Activate Paid Subscription & Log Transaction
+exports.activateSubscription = async (req, res) => {
+  try {
+    const {
+      planId,
+      vehicleCategory = 'bike',
+      paymentMethod = 'UPI',
+      transactionId = null,
+      isFreeTrial = false
+    } = req.body;
+
+    const userId = req.user.id;
+
+    // 1. Fetch Driver Profile
+    const driver = await Driver.findOne({ where: { user_id: userId } });
+    if (!driver) {
+      return res.status(404).json({
+        success: false,
+        message: 'Driver profile not found'
+      });
+    }
+
+    // 2. Flexible Plan Lookup
+    let plan = null;
+
+    if (planId) {
+      // Try searching by Primary Key / string ID first
+      plan = await SubscriptionPlan.findOne({
+        where: { id: planId, is_active: true }
+      });
+
+      // If not found by exact string ID, fallback to searching by matching vehicleCategory & cycle
+      if (!plan) {
+        // Extracts duration cycle e.g. "bike_1m" -> "1_month", "bike_3m" -> "3_months"
+        const cycleMap = {
+          '1m': '1_month',
+          '3m': '3_months',
+          '6m': '6_months',
+          '1y': '1_year'
+        };
+        const planKey = planId.split('_')[1]; // extracts '1m'
+        const cycle = cycleMap[planKey] || '1_month';
+
+        plan = await SubscriptionPlan.findOne({
+          where: {
+            vehicle_category: vehicleCategory.toLowerCase(),
+            cycle: cycle,
+            is_active: true
+          }
+        });
+      }
+    } else if (isFreeTrial) {
+      plan = await SubscriptionPlan.findOne({
+        where: {
+          vehicle_category: vehicleCategory.toLowerCase(),
+          is_free_trial: true,
+          is_active: true
+        }
+      });
+    }
+
+    if (!plan) {
+      return res.status(404).json({
+        success: false,
+        message: `Subscription plan '${planId}' not found or is inactive in database`
+      });
+    }
+
+    // 3. Calculate Expiry Dates
+    const totalDays = plan.totalDays || plan.total_days || 30;
+    const startDate = new Date();
+    const endDate = new Date();
+    endDate.setDate(startDate.getDate() + totalDays);
+
+    const generatedTxnId = transactionId || (
+      isFreeTrial
+        ? `TRIAL-${Date.now().toString().slice(-6)}`
+        : `TXN-BAT-${Date.now().toString().slice(-8)}`
+    );
+
+    // 4. Create Active Driver Subscription Record
+    const subscription = await DriverSubscription.create({
+      driverId: driver.id,
+      planId: plan.id,
+      vehicleCategory,
+      title: plan.name || plan.title,
+      price: isFreeTrial ? 0.00 : (plan.price || 0.00),
+      cycle: plan.cycle || '1_month',
+      durationLabel: plan.durationLabel || plan.duration_label || '1 Month',
+      baseMonths: plan.baseMonths || plan.base_months || 1,
+      bonusDays: plan.bonusDays || plan.bonus_days || 0,
+      bonusLabel: plan.bonusLabel || plan.bonus_label || null,
+      totalDays,
+      isFreeTrial,
+      startDate,
+      endDate,
+      status: 'active',
+      transactionId: generatedTxnId,
+      paymentMethod: isFreeTrial ? 'Free Trial Offer' : paymentMethod
+    });
+
+    await driver.update({ vehicleCategory });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Subscription activated successfully.',
+      subscription: {
+        id: subscription.id,
+        status: subscription.status,
+        vehicleCategory: subscription.vehicleCategory,
+        planId: subscription.planId,
+        planName: subscription.title,
+        price: subscription.price,
+        cycle: subscription.cycle,
+        durationLabel: subscription.durationLabel,
+        bonusLabel: subscription.bonusLabel,
+        isFreeTrial: subscription.isFreeTrial,
+        startDate: subscription.startDate.toISOString(),
+        expiryDate: subscription.endDate.toISOString(),
+        transactionId: subscription.transactionId,
+        paymentMethod: subscription.paymentMethod
+      }
+    });
+  } catch (error) {
+    console.error('Error activating subscription:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+
+exports.updateVerificationStatus = async (req, res) => {
+    try {
+        const driverId = req.user.id;
+        const { status, remarks } = req.body;
+        const isVerified = status === 'verified';
+
+        await Driver.update(
+            {
+                isVerified: isVerified // or is_verified depending on your model field definition
+            },
+            {
+                where: {
+                    user_id: driverId // or driver_id / id depending on your primary key field
+                }
+            }
+        );
+
+
+        res.json({
+            success: true,
+            message: `Driver status successfully updated to ${status}.`
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+
+
+
+exports.getPlansByCategory = async (req, res) => {
+    try {
+        const category = (req.query.category || 'bike').toLowerCase();
+
+        // Query plans matching vehicle_category
+        const plans = await SubscriptionPlan.findAll({
+            where: {
+                vehicle_category: category,
+                is_active: true
+            },
+            order: [
+                ['is_free_trial', 'DESC'],
+                ['price', 'ASC']
+            ]
+        });
+
+        // Output mapped directly with string IDs
+        const formattedPlans = plans.map(plan => ({
+            id: String(plan.id), // e.g., 'bike_free_trial', 'bike_monthly'
+            name: plan.name,
+            cycle: plan.cycle,
+            durationLabel: plan.durationLabel || plan.duration_label,
+            price: Number(plan.price),
+            totalDays: plan.totalDays || plan.total_days,
+            isFreeTrial: Boolean(plan.isFreeTrial ?? plan.is_free_trial)
+        }));
+
+        return res.status(200).json({
+            success: true,
+            category,
+            plans: formattedPlans
+        });
+    } catch (error) {
+        console.error('Error fetching plans:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to retrieve subscription plans',
+            error: error.message
+        });
+    }
+};
+
+
+exports.getActivePlan = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        // 1. Find driver by authenticated user ID
+        const driver = await Driver.findOne({
+            where: { user_id: userId }
+        });
+
+        if (!driver) {
+            return res.status(404).json({
+                success: false,
+                isSubscribed: false,
+                message: 'Driver profile not found'
+            });
+        }
+
+        // 2. Query for active subscription where end_date > current time
+        const activeSub = await DriverSubscription.findOne({
+            where: {
+                driverId: driver.id,
+                status: 'active',
+                endDate: {
+                    [Op.gt]: new Date() // Ensures subscription is still valid
+                }
+            },
+            include: [
+                {
+                    model: SubscriptionPlan,
+                    as: 'subscriptionplan' // Adjust alias if defined differently in your association
+                }
+            ],
+            order: [['endDate', 'DESC']]
+        });
+
+        // 3. Return status boolean and active plan details
+        if (!activeSub) {
+            return res.status(200).json({
+                success: true,
+                isSubscribed: false,
+                activePlan: null
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            isSubscribed: true,
+            activePlan: {
+                id: activeSub.planId,
+                title: activeSub.subscriptionplan?.name,
+                startDate: activeSub.startDate,
+                endDate: activeSub.endDate,
+                status: activeSub.status,
+                isFreeTrial: activeSub.subscriptionplan?.isFreeTrial
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching active plan:', error);
+        return res.status(500).json({
+            success: false,
+            isSubscribed: false,
+            message: 'Failed to retrieve active plan',
+            error: error.message
+        });
+    }
+};
 

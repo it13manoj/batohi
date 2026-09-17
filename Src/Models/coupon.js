@@ -1,65 +1,30 @@
-const { DataTypes } = require("sequelize");
-const sequelize = require("../config/database");
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
 
-const Coupon = sequelize.define("Coupon", {
-    id: {
-        type: DataTypes.INTEGER,
-        autoIncrement: true,
-        primaryKey: true
-    },
-
-    coupon_code: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        unique: true
-    },
-
-    discount_type: {
-        type: DataTypes.STRING,
-        allowNull: false
-    },
-
-    discount_value: {
-        type: DataTypes.DECIMAL(10, 2),
-        allowNull: false
-    },
-
-    minimum_amount: {
-        type: DataTypes.DECIMAL(10, 2),
-        allowNull: false
-    },
-
-    maximum_discount: {
-        type: DataTypes.DECIMAL(10, 2),
-        allowNull: true
-    },
-
-    valid_from: {
-        type: DataTypes.DATE,
-        allowNull: false
-    },
-
-    valid_to: {
-        type: DataTypes.DATE,
-        allowNull: false
-    },
-
-    usage_limit: {
-        type: DataTypes.INTEGER,
-        allowNull: true
-    },
-
-    status: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        defaultValue: "active"
-    }
-
+const Coupon = sequelize.define('Coupon', {
+  id: {
+    type: DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey: true,
+  },
+  code: {
+    type: DataTypes.STRING(50),
+    unique: true,
+    allowNull: false,
+  },
+  discountAmount: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    field: 'discount_amount',
+  },
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    field: 'is_active',
+  },
 }, {
-    tableName: "coupons",
-    timestamps: true,
-    createdAt: "created_at",
-    updatedAt: "updated_at"
+  tableName: 'coupons',
+  timestamps: false,
 });
 
 module.exports = Coupon;
