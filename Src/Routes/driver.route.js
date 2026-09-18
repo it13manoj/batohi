@@ -1,5 +1,5 @@
 const express = require("express");
-const { create, getProfile, login, profile, dashboard, status, findRider, listOfBookedUsers, acceptRide, rejectRide, bookedStatus, booked, startRide, bothLocation, completeRide, cancelRide, getDriverStatus, validateCoupon, claimFreeTrial, activateSubscription, updateVerificationStatus, getPlansByCategory, getActivePlan } = require("../controllers/driver.controller");
+const { create, getProfile, login, profile, dashboard, status, findRider, listOfBookedUsers, acceptRide, rejectRide, bookedStatus, booked, startRide, bothLocation, completeRide, cancelRide, getDriverStatus, validateCoupon, claimFreeTrial, activateSubscription, updateVerificationStatus, getPlansByCategory, getActivePlan, completeProfile, updateVehicleCategory, createCheckOutSession, createCheckoutSession } = require("../controllers/driver.controller");
 const authMiddleware = require("../Middleware/auth.middleware");
 const { upload } = require("../Utils/upload");
 
@@ -58,5 +58,27 @@ Route.get('/plans', authMiddleware, getPlansByCategory);
 
 Route.get('/active_plans', authMiddleware, getActivePlan);
 
+Route.post('/complete-profile', authMiddleware, completeProfile);
+Route.post('/update-vehicle-category', authMiddleware, updateVehicleCategory);
+
+
+
+const checkoutSessionEndpoints = [
+  '/payments/create-checkout-session',
+  '/payment/create-checkout-session',
+  '/payments/stripe/create-checkout-session',
+  '/payments/stripe/checkout',
+  '/create-checkout-session',
+  '/stripe/checkout',
+  '/stripe/create-checkout-session',
+  '/stripe/session',
+  '/stripe/create-session',
+  '/stripe/checkout',
+  '/stripe/create-checkout-session',
+  '/checkout-session/create',
+  '/payment/stripe/create-checkout-session'
+];
+
+Route.post(checkoutSessionEndpoints,authMiddleware, createCheckoutSession);
 
 module.exports = Route; 

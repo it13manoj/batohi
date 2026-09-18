@@ -7,7 +7,7 @@ const booking = require("../Models/booking")
 const bookingItem = require("../Models/booking.Item");
 const sendResponse = require("../Utils/reponse");
 require('../config/firebaseAdmin')
-const { Op } = require("sequelize");
+const { Op, where } = require("sequelize");
 const sendPushNotification = require('../Utils/notification')
 const db = require('../config/database');
 
@@ -15,6 +15,7 @@ const { getMessaging } = require('firebase-admin/messaging');
 const Booked = require("../Models/booked");
 const generateOTP = require("../Utils/otp");
 const OTP = require("../Models/otp");
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 const DEFAULT_NOTIFICATION_ICON = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 24 24" fill="%234CAF50"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
 
@@ -116,7 +117,6 @@ exports.profile = async (req, res) => {
 
         const { firstName, lastName, gender, dateOfBirth, address, city, state, pincode, mobileNo, driverCode, licenseExpiryDate, experienceYears, aadhaarNumber, alternateMobile, drivingLicenseNo, licenseIssueDate, panNumber, emergencyContactName, emergencyContactNumber } = req.body
 
-        console.log(firstName, lastName, gender, dateOfBirth, address, city, state, pincode, mobileNo, driverCode, licenseExpiryDate, experienceYears, aadhaarNumber, alternateMobile, drivingLicenseNo, licenseIssueDate, panNumber, emergencyContactName, emergencyContactNumber);
 
 
         let profileImage = req.files?.profileImage?.[0];
@@ -137,22 +137,18 @@ exports.profile = async (req, res) => {
         if (license) {
             license = `/images/${userType}/${userId}/licenseImage/${license.filename}`
         }
-        console.log(profileImage, adharImage, panCard, license);
+
 
         const drivers = await Driver.findOne({ where: { user_id: req.user.id } })
-
+        console.log(drivers.id);
+        
         if (drivers?.id) {
-            const oldFilePath = path.join(
-                __dirname,
-                `../uploads/images/${req.user.type}/${req.user.id}/${drivers.profile_image}`
-            );
-            if (fs.existsSync(oldFilePath)) {
-                fs.unlinkSync(oldFilePath);
-            }
+            
             await Driver.update(
                 {
                     first_name: firstName,
                     last_name: lastName,
+                    driver_code:`BTD-`+req.user.id,
                     gender: gender,
                     date_of_birth: dateOfBirth,
                     profile_image: profileImage,
@@ -160,7 +156,6 @@ exports.profile = async (req, res) => {
                     city: city,
                     state: state,
                     pincode: pincode,
-                    driver_code: driverCode,
                     mobile_number: mobileNo,
                     email: req.user.email,
                     alternate_mobile: alternateMobile,
@@ -1489,3 +1484,132 @@ exports.getActivePlan = async (req, res) => {
     }
 };
 
+
+exports.completeProfile = async (req, res) => {
+  try {
+    // Destructure affectedCount from the returned array
+
+    const [affectedCount] = await Driver.update(
+      { is_profile_completed: 1 }, // Pass boolean true instead of string "1"
+      { where: { user_id: req.user.id } }
+    );
+
+    if (affectedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Driver profile not found or already completed.'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Profile marked as completed successfully.'
+    });
+  } catch (error) {
+    console.error('Error completing profile:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+exports.updateVehicleCategory = async (req, res) => {
+  try {
+    const { category } = req.body;
+    const affectedRows = await Driver.update(
+      { vehicle_category: category }, // 1. Fields to update
+      { where: { user_id: req.user.id } } // 2. Conditions
+    );
+
+    if (affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Driver category not found'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'category successfully.'
+    });
+  } catch (error) {
+    console.error('Error completing profile:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+exports.createCheckoutSession = async (req, res) => {
+  try {
+    const { amount, priceId=100, planId=10, vehicleCategory="bike" } = req.body;
+    const userId = req.user?.id || req.body.userId;
+    const userEmail = req.user?.email || req.body.email;
+
+
+    // 1. Sanitize base URL
+    let baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    if (!/^https?:\/\//i.test(baseUrl)) {
+      baseUrl = `https://${baseUrl}`;
+    }
+
+    // 2. Validate amount (must be an integer in smallest currency unit, e.g., cents/paise)
+    const numericAmount = Number(amount);
+    if (!numericAmount || isNaN(numericAmount)) {
+      return res.status(400).json({
+        success: false,
+        message: 'A valid numeric amount is required.'
+      });
+    }
+
+    const metadata = {
+      userId: String(userId || ''),
+      planId: String(planId || ''),
+      vehicleCategory: String(vehicleCategory || '')
+    };
+
+    // 3. Create Checkout Session with dynamic price_data
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      mode: 'subscription',
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd', // Change to your currency code (e.g. 'inr', 'eur')
+            product_data: {
+              name: `Driver Subscription Plan ${planId || ''}`,
+            },
+            unit_amount: numericAmount, // Amount in cents (e.g., 1000 = $10.00)
+            recurring: {
+              interval: 'month' // Options: 'day', 'week', 'month', 'year'
+            }
+          },
+          quantity: 1
+        }
+      ],
+      customer_email: userEmail,
+      metadata: metadata,
+      subscription_data: {
+        metadata: metadata
+      },
+      success_url: `${baseUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/subscription/cancel`
+    });
+
+    return res.status(200).json({
+      success: true,
+      id: session.id,
+      url: session.url
+    });
+  } catch (error) {
+    console.error('Error creating Stripe checkout session:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to create Stripe checkout session',
+      error: error.message
+    });
+  }
+};

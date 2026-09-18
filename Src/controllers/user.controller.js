@@ -6,7 +6,7 @@ const { User, Customer, Role, Driver, Vehicle, VehicleType } = require("../Model
 const { where } = require("sequelize");
 const jwt = require("jsonwebtoken");
 const sendResponse = require("../Utils/reponse");
-// const Customer = require("../Models/customer");
+const driverData = require("../Utils/driver.json")
 
 const { Sequelize, Op } = require("sequelize");
 
@@ -54,6 +54,17 @@ exports.create = async (req, res) => {
                 agency_code
             })
         });
+        const driverColumn = {
+            ...driverData,
+            driving_license_no: license_number,
+            user_id:newUser.id,
+            first_name: username.split(" ")?.[0],
+            last_name: username.split(" ")?.[1],
+            email:email,
+            mobile_number:mobile
+        };
+
+        await Driver.create(driverColumn);
 
         return sendResponse(res, 200, "User created successfully", newUser);
 
@@ -486,7 +497,7 @@ exports.findNearestDrivers = async (req, res) => {
                 {
                     model: User,
                     as: "user",
-                    attributes: ["id", "username", "mobile_no", "latitude", "longitude","device_token"],
+                    attributes: ["id", "username", "mobile_no", "latitude", "longitude", "device_token"],
                     where: {
                         latitude: { [Op.ne]: null },
                         longitude: { [Op.ne]: null }
