@@ -443,7 +443,7 @@ exports.findRider = async (req, res) => {
 
         const distanceInKm = calculateDistance(latitude_to, longitude_to, latitude_from, longitude_from, 'km');
 
-        const response = await getMessaging().send(message)
+        //const response = await getMessaging().send(message)
         const userId = req.user.id;
         const newBooking = await Booked.create({
             user_id: userId,
@@ -469,7 +469,7 @@ exports.findRider = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: 'Notification sent successfully',
-            fcmResponse: response,
+            fcmResponse: "",
             data: newBooking
         });
 
