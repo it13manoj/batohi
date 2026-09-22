@@ -7,6 +7,11 @@ const { where } = require("sequelize");
 const jwt = require("jsonwebtoken");
 const sendResponse = require("../Utils/reponse");
 const driverData = require("../Utils/driver.json")
+const otp = require("../Models/otp")
+const {
+    sendRegistrationEmail,
+    sendOtpEmail
+} = require("../Utils/email");
 
 const { Sequelize, Op } = require("sequelize");
 
@@ -23,55 +28,90 @@ exports.create = async (req, res) => {
             agency_code
         } = req.body;
 
-        // 1. Fetch the single role record matching the user_type
+        // 1. Find Role
         const findRole = await Role.findOne({
             where: { name: user_type }
         });
 
-        console.log(findRole, user_type);
+        console.log("ROLE:", findRole, "USER TYPE:", user_type);
 
-        // 2. Validate that the role exists
+        // 2. Validate Role
         if (!findRole) {
-            return sendResponse(res, 400, "Invalid user type or role not found");
+            return sendResponse(
+                res,
+                400,
+                "Invalid user type or role not found"
+            );
         }
 
-        // 3. Hash the password
+        // 3. Hash Password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // 4. Create the user with proper role ID and conditional fields
+        // 4. Create User
         const newUser = await User.create({
             username: username,
             email: email,
             mobile_no: mobile,
             password_hash: hashedPassword,
             user_type: user_type,
-            role_id: findRole.id, // Extract the ID property from the found role
-            ...(user_type === 'DRIVER' && {
+            role_id: findRole.id,
+
+            ...(user_type === "DRIVER" && {
                 license_number,
                 vehicle_number
             }),
-            ...(user_type === 'AGENTS' && {
+
+            ...(user_type === "AGENTS" && {
                 agency_code
             })
         });
-        if (user_type === 'DRIVER') {
+
+        // 5. Create Driver
+        if (user_type === "DRIVER") {
+
             const driverColumn = {
                 ...driverData,
                 driving_license_no: license_number,
                 user_id: newUser.id,
                 first_name: username.split(" ")?.[0],
-                last_name: username.split(" ")?.[1],
+                last_name: username.split(" ")?.[1] || "",
                 email: email,
-                mobile_number: mobile
+                mobile_number: mobile_no
             };
 
             await Driver.create(driverColumn);
         }
 
-        return sendResponse(res, 200, "User created successfully", newUser);
+        // 6. Send Registration Email
+        try {
+
+            await sendRegistrationEmail(
+                email,
+                username
+            );
+
+            console.log("✅ Registration email sent successfully");
+
+        } catch (emailError) {
+
+            console.error(
+                "❌ Registration email failed:",
+                emailError.message
+            );
+        }
+
+        // 7. Final Response
+        return sendResponse(
+            res,
+            200,
+            "User created successfully",
+            newUser
+        );
 
     } catch (error) {
+
         console.error("User Creation Error:", error);
+
         return sendResponse(
             res,
             500,
@@ -85,6 +125,10 @@ exports.login = async (req, res) => {
     try {
 
         const { email, password } = req.body;
+
+        // =========================
+        // FIND USER
+        // =========================
         const user = await User.findOne({
             where: {
                 email: email,
@@ -93,16 +137,197 @@ exports.login = async (req, res) => {
                 status: true
             }
         });
+
         if (!user) {
-            return res.send("User not found")
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
         }
 
+        // =========================
+        // PASSWORD VERIFY
+        // =========================
         const isMatch = await bcrypt.compare(
             password,
-            user.password_hash,
+            user.password_hash
         );
 
+        if (!isMatch) {
+            return res.status(401).json({
+                success: false,
+                message: "Invalid password"
+            });
+        }
 
+        // =========================
+        // GENERATE 6 DIGIT OTP
+        // =========================
+        const generatedOtp = Math.floor(
+            100000 + Math.random() * 900000
+        ).toString();
+
+        // =========================
+        // OTP EXPIRY
+        // 5 MINUTES
+        // =========================
+        const otpExpiry = new Date(
+            Date.now() + 5 * 60 * 1000
+        );
+
+        // =========================
+        // OLD OTP DELETE
+        // SAME USER KA PURANA OTP HATAO
+        // =========================
+        await otp.destroy({
+            where: {
+                user_id: user.id
+            }
+        });
+
+        // =========================
+        // SAVE OTP IN OTP TABLE
+        // USER ID KE SAATH
+        // =========================
+        await otp.create({
+            user_id: user.id,
+            otp: generatedOtp,
+            booked_id: null
+        });
+
+        // =========================
+        // SEND OTP EMAIL
+        // =========================
+        await sendOtpEmail(
+            user.email,
+            user.username,
+            generatedOtp
+        );
+
+        console.log(
+            "LOGIN OTP SAVED:",
+            generatedOtp,
+            "USER ID:",
+            user.id,
+            "EXPIRES:",
+            otpExpiry
+        );
+
+        // =========================
+        // RESPONSE
+        // =========================
+        return res.status(200).json({
+            success: true,
+            message: "OTP sent to your email",
+            user_id: user.id,
+            email: user.email,
+            otp_required: true
+        });
+
+    } catch (error) {
+
+        console.log("Login Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Login failed",
+            error: error.message
+        });
+    }
+};
+
+
+exports.verifyOtp = async (req, res) => {
+    try {
+
+        const { user_id, otp: otp } = req.body;
+
+        // =========================
+        // CHECK USER ID AND OTP
+        // =========================
+        if (!user_id || !otp) {
+            return res.status(400).json({
+                success: false,
+                message: "user_id and otp are required"
+            });
+        }
+
+        // =========================
+        // CHECK USER
+        // =========================
+        const user = await User.findByPk(user_id);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        // =========================
+        // FIND OTP BY USER ID
+        // =========================
+        const otpData = await otp.findOne({
+            where: {
+                user_id: user_id,
+                otp: otp
+            },
+            order: [["created_at", "DESC"]]
+        });
+
+        // =========================
+        // INVALID OTP
+        // =========================
+        if (!otpData) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid OTP"
+            });
+        }
+
+        // =========================
+        // OTP EXPIRY
+        // 10 MINUTES
+        // =========================
+        if (new Date() > new Date(otpData.otp_expiry)) {
+            await otp.destroy({
+                where: {
+                    id: otpData.id
+                }
+            });
+
+            return res.status(400).json({
+                success: false,
+                message: "OTP has expired"
+            });
+        }
+
+        // =========================
+        // USER VERIFIED
+        // =========================
+        await User.update(
+            {
+                is_verified: true
+            },
+            {
+                where: {
+                    id: user_id
+                }
+            }
+        );
+
+        // =========================
+        // DELETE USED OTP
+        // =========================
+        await otp.destroy({
+            where: {
+                id: otpData.id
+            }
+        });
+
+        // =========================
+        // JWT TOKEN
+        // =========================
         const token = jwt.sign(
             {
                 id: user.id,
@@ -116,16 +341,35 @@ exports.login = async (req, res) => {
             }
         );
 
+        // =========================
+        // SUCCESS RESPONSE
+        // =========================
+        return res.status(200).json({
+            success: true,
+            message: "OTP verified successfully",
 
-        if (!isMatch) {
-            return res.send("Invalid password");
-        }
-        res.send({ token: token });
+            token: token,
 
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                mobile_no: user.mobile_no,
+                user_type: user.user_type,
+                status: user.status,
+                is_verified: true
+            }
+        });
 
     } catch (error) {
-        console.log(error);
-        res.status(500).send(error.message);
+
+        console.log("OTP Verify Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "OTP verification failed",
+            error: error.message
+        });
     }
 };
 
@@ -300,17 +544,43 @@ exports.update = async (req, res) => {
 };
 
 
+   
 exports.destroy = async (req, res) => {
     try {
-        const id = req.params.id;
-        await User.destroy({
+        const id = req.body.id;
+
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: "User id is required"
+            });
+        }
+
+        const deleted = await User.destroy({
             where: { id: id }
         });
-        res.send("user destroy")
+
+        if (deleted === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "User destroyed successfully"
+        });
+
     } catch (error) {
-        res.send(error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to destroy user",
+            error: error.message
+        });
     }
-}
+};
+
 
 
 exports.updateLocation = async (req, res) => {

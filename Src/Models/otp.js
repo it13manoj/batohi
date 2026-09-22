@@ -1,46 +1,38 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
-const Booked = require("./booked");
 
-const OTP = sequelize.define(
-  "Otp",
-  {
+const Otp = sequelize.define("Otp", {
     id: {
-      type: DataTypes.INTEGER,
-      autoIncrement: true,
-      primaryKey: true
+        type: DataTypes.INTEGER,
+        autoIncrement: true,
+        primaryKey: true
     },
 
     booked_id: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      references: {
-        model: Booked,
-        key: "id"
-      }
+        type: DataTypes.INTEGER,
+        allowNull: true
     },
 
     otp: {
-      type: DataTypes.INTEGER,
-      allowNull: true
+        type: DataTypes.INTEGER,
+        allowNull: true
     },
 
     votp: {
-      type: DataTypes.INTEGER,
-      allowNull: true
+        type: DataTypes.INTEGER,
+        allowNull: true
     },
 
-    
-  },
-  {
+    user_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    }
+
+}, {
     tableName: "otps",
     timestamps: true,
     createdAt: "created_at",
     updatedAt: "updated_at"
-  }
-);
+});
 
-// Define Associations
-Booked.hasOne(OTP, { foreignKey: "booked_id", as: "otp" });
-
-module.exports = OTP;
+module.exports = Otp;
