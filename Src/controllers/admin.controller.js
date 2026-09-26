@@ -40,6 +40,16 @@ const errorResponse = (res, statusCode = 500, message = "Internal Server Error",
   });
 };
 
+// Helper to generate absolute URLs for uploaded documents and images
+const getFullUrl = (req, filePath) => {
+  if (!filePath) return "";
+  if (filePath.startsWith("http://") || filePath.startsWith("https://")) return filePath;
+  const cleanPath = filePath.startsWith("/") ? filePath : `/${filePath}`;
+  const host = (req && req.get && req.get("host")) || "localhost:3300";
+  const protocol = (req && req.protocol) || "http";
+  return `${protocol}://${host}${cleanPath}`;
+};
+
 // =========================================================================
 // 1. DASHBOARD OVERVIEW
 // =========================================================================
@@ -442,6 +452,13 @@ exports.getDrivers = async (req, res) => {
           model: Vehicle,
           as: "vehicle",
           required: false,
+          include: [
+            {
+              model: VehicleType,
+              as: "vehicleType",
+              required: false,
+            },
+          ],
         },
       ],
       order: [["id", "DESC"]],
@@ -455,46 +472,223 @@ exports.getDrivers = async (req, res) => {
       Driver.count({ where: { status: { [Op.in]: ["inactive", "blocked", "suspended"] } } }).catch(
         () => 0,
       ),
-      Driver.count({ where: { [Op.or]: [{ verification_status: "pending" }, { isVerified: false }] } }).catch(() => 0),
-      Driver.count({ where: { [Op.or]: [{ verification_status: "verified" }, { isVerified: true }] } }).catch(() => 0),
+      Driver.count({
+        where: { [Op.or]: [{ verification_status: "pending" }, { isVerified: false }] },
+      }).catch(() => 0),
+      Driver.count({
+        where: { [Op.or]: [{ verification_status: "verified" }, { isVerified: true }] },
+      }).catch(() => 0),
     ]);
 
-    const formatted = rows.map((d) => ({
-      id: d.id,
-      userId: d.user_id,
-      name: `${d.first_name || ""} ${d.last_name || ""}`.trim() || d.user?.username || "Driver",
-      email: d.email || d.user?.email || "",
-      mobile: d.mobile_number || d.user?.mobile_no || "",
-      gender: d.gender ? d.gender.charAt(0).toUpperCase() + d.gender.slice(1) : "Male",
-      agencyType: d.agency_type || "Owner",
-      insurance: d.insurance || "Yes",
-      insuranceNumber: d.insurance_number || "INS-" + d.id,
-      insuranceExpiry: d.insurance_expiry || "2027-12-31",
-      state: d.state || "",
-      city: d.city || "",
-      status: d.status
-        ? d.status.toLowerCase() === "active"
-          ? "Active"
-          : d.status.charAt(0).toUpperCase() + d.status.slice(1)
-        : "Active",
-      isVerified: Boolean(d.isVerified ?? d.is_verified ?? (d.verification_status === "verified")),
-      verificationStatus: d.verification_status || (Boolean(d.isVerified ?? d.is_verified) ? "verified" : "pending"),
-      drivingLicenseNo: d.driving_license_no || "",
-      licenseImage: d.license_image || "",
-      aadhaarNumber: d.aadhaar_number || "",
-      aadhaarImage: d.aadhaar_image || "",
-      panNumber: d.pan_number || "",
-      panImage: d.pan_image || "",
-      profileImage: d.profile_image || "",
-      vehicleCategory: d.vehicleCategory || d.vehicle_category || "bike",
-      isProfileCompleted: Boolean(d.isProfileCompleted ?? d.is_profile_completed),
-      bookings: 0,
-      createdAt: d.created_at ? new Date(d.created_at).toISOString().split("T")[0] : "",
-      address: d.address || "",
-      vehicle: d.vehicle
-        ? `${d.vehicle.vehicle_name || ""} (${d.vehicle.registration_no || ""})`
-        : "Unassigned",
-    }));
+    const formatted = rows.map((d) => {
+      const isVerified = Boolean(
+        d.isVerified ?? d.is_verified ?? d.verification_status === "verified",
+      );
+      const verificationStatus = d.verification_status || (isVerified ? "verified" : "pending");
+
+      return {
+        id: d.id,
+        userId: d.user_id,
+        user_id: d.user_id,
+        driverCode: d.driver_code,
+        driver_code: d.driver_code,
+        name: `${d.first_name || ""} ${d.last_name || ""}`.trim() || d.user?.username || "Driver",
+        firstName: d.first_name || "",
+        first_name: d.first_name || "",
+        lastName: d.last_name || "",
+        last_name: d.last_name || "",
+        email: d.email || d.user?.email || "",
+        mobile: d.mobile_number || d.user?.mobile_no || "",
+        mobileNumber: d.mobile_number || d.user?.mobile_no || "",
+        mobile_number: d.mobile_number || d.user?.mobile_no || "",
+        alternateMobile: d.alternate_mobile || "",
+        alternate_mobile: d.alternate_mobile || "",
+        gender: d.gender ? d.gender.charAt(0).toUpperCase() + d.gender.slice(1) : "Male",
+        dateOfBirth: d.date_of_birth || "",
+        date_of_birth: d.date_of_birth || "",
+        experienceYears: d.experience_years || 0,
+        experience_years: d.experience_years || 0,
+        emergencyContactName: d.emergency_contact_name || "",
+        emergency_contact_name: d.emergency_contact_name || "",
+        emergencyContactNumber: d.emergency_contact_number || "",
+        emergency_contact_number: d.emergency_contact_number || "",
+        agencyType: d.agency_type || "Owner",
+        insurance: d.insurance || "Yes",
+        insuranceNumber: d.insurance_number || "INS-" + d.id,
+        insuranceExpiry: d.insurance_expiry || "2027-12-31",
+        state: d.state || "",
+        city: d.city || "",
+        country: d.country || "India",
+        pincode: d.pincode || "",
+        address: d.address || "",
+        status: d.status
+          ? d.status.toLowerCase() === "active"
+            ? "Active"
+            : d.status.charAt(0).toUpperCase() + d.status.slice(1)
+          : "Active",
+        isVerified,
+        verificationStatus,
+        verification_status: verificationStatus,
+        vehicleCategory: d.vehicleCategory || d.vehicle_category || "bike",
+        isProfileCompleted: Boolean(d.isProfileCompleted ?? d.is_profile_completed),
+        bookings: 0,
+        createdAt: d.created_at ? new Date(d.created_at).toISOString().split("T")[0] : "",
+
+        // Document fields - both relative paths and absolute URLs
+        drivingLicenseNo: d.driving_license_no || "",
+        driving_license_no: d.driving_license_no || "",
+        licenseIssueDate: d.license_issue_date || "",
+        license_issue_date: d.license_issue_date || "",
+        licenseExpiryDate: d.license_expiry_date || "",
+        license_expiry_date: d.license_expiry_date || "",
+        licenseImage: d.license_image || "",
+        license_image: d.license_image || "",
+        licenseImageUrl: getFullUrl(req, d.license_image),
+        license_image_url: getFullUrl(req, d.license_image),
+
+        aadhaarNumber: d.aadhaar_number || "",
+        aadhaar_number: d.aadhaar_number || "",
+        aadhaarImage: d.aadhaar_image || "",
+        aadhaar_image: d.aadhaar_image || "",
+        aadhaarImageUrl: getFullUrl(req, d.aadhaar_image),
+        aadhaar_image_url: getFullUrl(req, d.aadhaar_image),
+
+        panNumber: d.pan_number || "",
+        pan_number: d.pan_number || "",
+        panImage: d.pan_image || "",
+        pan_image: d.pan_image || "",
+        panImageUrl: getFullUrl(req, d.pan_image),
+        pan_image_url: getFullUrl(req, d.pan_image),
+
+        profileImage: d.profile_image || "",
+        profile_image: d.profile_image || "",
+        profileImageUrl: getFullUrl(req, d.profile_image),
+        profile_image_url: getFullUrl(req, d.profile_image),
+
+        // Structured documents map for verification modal
+        documents: {
+          profileImage: {
+            id: "profile",
+            title: "Profile Photo",
+            type: "profile",
+            path: d.profile_image || "",
+            url: getFullUrl(req, d.profile_image),
+            uploaded: Boolean(d.profile_image),
+            status: verificationStatus,
+          },
+          license: {
+            id: "license",
+            title: "Driving License",
+            type: "license",
+            number: d.driving_license_no || "",
+            issueDate: d.license_issue_date || "",
+            expiryDate: d.license_expiry_date || "",
+            path: d.license_image || "",
+            url: getFullUrl(req, d.license_image),
+            uploaded: Boolean(d.license_image),
+            status: verificationStatus,
+          },
+          aadhaar: {
+            id: "aadhaar",
+            title: "Aadhaar Card",
+            type: "aadhaar",
+            number: d.aadhaar_number || "",
+            path: d.aadhaar_image || "",
+            url: getFullUrl(req, d.aadhaar_image),
+            uploaded: Boolean(d.aadhaar_image),
+            status: verificationStatus,
+          },
+          pan: {
+            id: "pan",
+            title: "PAN Card",
+            type: "pan",
+            number: d.pan_number || "",
+            path: d.pan_image || "",
+            url: getFullUrl(req, d.pan_image),
+            uploaded: Boolean(d.pan_image),
+            status: verificationStatus,
+          },
+        },
+
+        // Document list array for verification UI iteration
+        documentList: [
+          {
+            id: "license",
+            title: "Driving License",
+            type: "license",
+            documentNumber: d.driving_license_no || "",
+            issueDate: d.license_issue_date || "",
+            expiryDate: d.license_expiry_date || "",
+            path: d.license_image || "",
+            url: getFullUrl(req, d.license_image),
+            uploaded: Boolean(d.license_image),
+            status: verificationStatus,
+          },
+          {
+            id: "aadhaar",
+            title: "Aadhaar Card",
+            type: "aadhaar",
+            documentNumber: d.aadhaar_number || "",
+            path: d.aadhaar_image || "",
+            url: getFullUrl(req, d.aadhaar_image),
+            uploaded: Boolean(d.aadhaar_image),
+            status: verificationStatus,
+          },
+          {
+            id: "pan",
+            title: "PAN Card",
+            type: "pan",
+            documentNumber: d.pan_number || "",
+            path: d.pan_image || "",
+            url: getFullUrl(req, d.pan_image),
+            uploaded: Boolean(d.pan_image),
+            status: verificationStatus,
+          },
+          {
+            id: "profile",
+            title: "Driver Photo",
+            type: "profile",
+            path: d.profile_image || "",
+            url: getFullUrl(req, d.profile_image),
+            uploaded: Boolean(d.profile_image),
+            status: verificationStatus,
+          },
+        ],
+
+        vehicle: d.vehicle
+          ? `${d.vehicle.vehicle_name || ""} (${d.vehicle.registration_no || ""})`
+          : "Unassigned",
+        vehicleId: d.vehicle?.id || null,
+        vehicleDetails: d.vehicle
+          ? {
+              id: d.vehicle.id,
+              name: d.vehicle.vehicle_name,
+              registrationNo: d.vehicle.registration_no,
+              manufacturer: d.vehicle.manufacturer,
+              model: d.vehicle.model,
+              manufacturingYear: d.vehicle.manufacturing_year,
+              colour: d.vehicle.colour,
+              seatingCapacity: d.vehicle.seating_capacity,
+              fuelType: d.vehicle.fuel_type,
+              rcNumber: d.vehicle.rc_number,
+              insuranceNo: d.vehicle.insurance_no,
+              insuranceExpiryDate: d.vehicle.insurance_expiry_date,
+              permitNumber: d.vehicle.permit_number,
+              permitExpiryDate: d.vehicle.permit_expiry_date,
+              status: d.vehicle.status,
+              vehicleType: d.vehicle.vehicleType
+                ? {
+                    id: d.vehicle.vehicleType.id,
+                    name: d.vehicle.vehicleType.name,
+                    category: d.vehicle.vehicleType.vehicle_category,
+                    baseFare: d.vehicle.vehicleType.base_fare,
+                    perKmRate: d.vehicle.vehicleType.per_km_rate,
+                  }
+                : null,
+            }
+          : null,
+      };
+    });
 
     return successResponse(res, "Drivers fetched successfully", formatted, {
       total,
@@ -628,13 +822,17 @@ exports.verifyDriver = async (req, res) => {
       return errorResponse(res, 404, "Driver not found");
     }
 
-    const isVerified = (status === "verified" || status === true);
-    const verificationStatus = isVerified ? "verified" : (status === "rejected" ? "rejected" : "pending");
+    const isVerified = status === "verified" || status === true;
+    const verificationStatus = isVerified
+      ? "verified"
+      : status === "rejected"
+        ? "rejected"
+        : "pending";
 
     await driver.update({
       isVerified,
       verification_status: verificationStatus,
-      status: isVerified ? "active" : driver.status
+      status: isVerified ? "active" : driver.status,
     });
 
     return successResponse(res, `Driver verification status updated to ${verificationStatus}`, {
@@ -642,10 +840,282 @@ exports.verifyDriver = async (req, res) => {
       userId: driver.user_id,
       isVerified,
       verificationStatus,
-      remarks
+      remarks,
     });
   } catch (error) {
     return errorResponse(res, 500, "Failed to update driver verification", error);
+  }
+};
+
+exports.getDriverById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    let driver = await Driver.findByPk(id, {
+      include: [
+        {
+          model: User,
+          as: "user",
+          required: false,
+          attributes: ["id", "username", "email", "mobile_no", "status", "created_at"],
+        },
+        {
+          model: Vehicle,
+          as: "vehicle",
+          required: false,
+          include: [
+            {
+              model: VehicleType,
+              as: "vehicleType",
+              required: false,
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!driver) {
+      driver = await Driver.findOne({
+        where: { user_id: id },
+        include: [
+          {
+            model: User,
+            as: "user",
+            required: false,
+            attributes: ["id", "username", "email", "mobile_no", "status", "created_at"],
+          },
+          {
+            model: Vehicle,
+            as: "vehicle",
+            required: false,
+            include: [
+              {
+                model: VehicleType,
+                as: "vehicleType",
+                required: false,
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    if (!driver) {
+      return errorResponse(res, 404, "Driver not found");
+    }
+
+    const d = driver;
+    const isVerified = Boolean(
+      d.isVerified ?? d.is_verified ?? d.verification_status === "verified",
+    );
+    const verificationStatus = d.verification_status || (isVerified ? "verified" : "pending");
+
+    const formatted = {
+      id: d.id,
+      userId: d.user_id,
+      user_id: d.user_id,
+      driverCode: d.driver_code,
+      driver_code: d.driver_code,
+      name: `${d.first_name || ""} ${d.last_name || ""}`.trim() || d.user?.username || "Driver",
+      firstName: d.first_name || "",
+      first_name: d.first_name || "",
+      lastName: d.last_name || "",
+      last_name: d.last_name || "",
+      email: d.email || d.user?.email || "",
+      mobile: d.mobile_number || d.user?.mobile_no || "",
+      mobileNumber: d.mobile_number || d.user?.mobile_no || "",
+      mobile_number: d.mobile_number || d.user?.mobile_no || "",
+      alternateMobile: d.alternate_mobile || "",
+      alternate_mobile: d.alternate_mobile || "",
+      gender: d.gender ? d.gender.charAt(0).toUpperCase() + d.gender.slice(1) : "Male",
+      dateOfBirth: d.date_of_birth || "",
+      date_of_birth: d.date_of_birth || "",
+      experienceYears: d.experience_years || 0,
+      experience_years: d.experience_years || 0,
+      emergencyContactName: d.emergency_contact_name || "",
+      emergency_contact_name: d.emergency_contact_name || "",
+      emergencyContactNumber: d.emergency_contact_number || "",
+      emergency_contact_number: d.emergency_contact_number || "",
+      agencyType: d.agency_type || "Owner",
+      insurance: d.insurance || "Yes",
+      insuranceNumber: d.insurance_number || "INS-" + d.id,
+      insuranceExpiry: d.insurance_expiry || "2027-12-31",
+      state: d.state || "",
+      city: d.city || "",
+      country: d.country || "India",
+      pincode: d.pincode || "",
+      address: d.address || "",
+      status: d.status
+        ? d.status.toLowerCase() === "active"
+          ? "Active"
+          : d.status.charAt(0).toUpperCase() + d.status.slice(1)
+        : "Active",
+      isVerified,
+      verificationStatus,
+      verification_status: verificationStatus,
+      vehicleCategory: d.vehicleCategory || d.vehicle_category || "bike",
+      isProfileCompleted: Boolean(d.isProfileCompleted ?? d.is_profile_completed),
+      bookings: 0,
+      createdAt: d.created_at ? new Date(d.created_at).toISOString().split("T")[0] : "",
+
+      // Document fields - both relative paths and absolute URLs
+      drivingLicenseNo: d.driving_license_no || "",
+      driving_license_no: d.driving_license_no || "",
+      licenseIssueDate: d.license_issue_date || "",
+      license_issue_date: d.license_issue_date || "",
+      licenseExpiryDate: d.license_expiry_date || "",
+      license_expiry_date: d.license_expiry_date || "",
+      licenseImage: d.license_image || "",
+      license_image: d.license_image || "",
+      licenseImageUrl: getFullUrl(req, d.license_image),
+      license_image_url: getFullUrl(req, d.license_image),
+
+      aadhaarNumber: d.aadhaar_number || "",
+      aadhaar_number: d.aadhaar_number || "",
+      aadhaarImage: d.aadhaar_image || "",
+      aadhaar_image: d.aadhaar_image || "",
+      aadhaarImageUrl: getFullUrl(req, d.aadhaar_image),
+      aadhaar_image_url: getFullUrl(req, d.aadhaar_image),
+
+      panNumber: d.pan_number || "",
+      pan_number: d.pan_number || "",
+      panImage: d.pan_image || "",
+      pan_image: d.pan_image || "",
+      panImageUrl: getFullUrl(req, d.pan_image),
+      pan_image_url: getFullUrl(req, d.pan_image),
+
+      profileImage: d.profile_image || "",
+      profile_image: d.profile_image || "",
+      profileImageUrl: getFullUrl(req, d.profile_image),
+      profile_image_url: getFullUrl(req, d.profile_image),
+
+      // Structured documents map for verification modal
+      documents: {
+        profileImage: {
+          id: "profile",
+          title: "Profile Photo",
+          type: "profile",
+          path: d.profile_image || "",
+          url: getFullUrl(req, d.profile_image),
+          uploaded: Boolean(d.profile_image),
+          status: verificationStatus,
+        },
+        license: {
+          id: "license",
+          title: "Driving License",
+          type: "license",
+          number: d.driving_license_no || "",
+          issueDate: d.license_issue_date || "",
+          expiryDate: d.license_expiry_date || "",
+          path: d.license_image || "",
+          url: getFullUrl(req, d.license_image),
+          uploaded: Boolean(d.license_image),
+          status: verificationStatus,
+        },
+        aadhaar: {
+          id: "aadhaar",
+          title: "Aadhaar Card",
+          type: "aadhaar",
+          number: d.aadhaar_number || "",
+          path: d.aadhaar_image || "",
+          url: getFullUrl(req, d.aadhaar_image),
+          uploaded: Boolean(d.aadhaar_image),
+          status: verificationStatus,
+        },
+        pan: {
+          id: "pan",
+          title: "PAN Card",
+          type: "pan",
+          number: d.pan_number || "",
+          path: d.pan_image || "",
+          url: getFullUrl(req, d.pan_image),
+          uploaded: Boolean(d.pan_image),
+          status: verificationStatus,
+        },
+      },
+
+      // Document list array for verification UI iteration
+      documentList: [
+        {
+          id: "license",
+          title: "Driving License",
+          type: "license",
+          documentNumber: d.driving_license_no || "",
+          issueDate: d.license_issue_date || "",
+          expiryDate: d.license_expiry_date || "",
+          path: d.license_image || "",
+          url: getFullUrl(req, d.license_image),
+          uploaded: Boolean(d.license_image),
+          status: verificationStatus,
+        },
+        {
+          id: "aadhaar",
+          title: "Aadhaar Card",
+          type: "aadhaar",
+          documentNumber: d.aadhaar_number || "",
+          path: d.aadhaar_image || "",
+          url: getFullUrl(req, d.aadhaar_image),
+          uploaded: Boolean(d.aadhaar_image),
+          status: verificationStatus,
+        },
+        {
+          id: "pan",
+          title: "PAN Card",
+          type: "pan",
+          documentNumber: d.pan_number || "",
+          path: d.pan_image || "",
+          url: getFullUrl(req, d.pan_image),
+          uploaded: Boolean(d.pan_image),
+          status: verificationStatus,
+        },
+        {
+          id: "profile",
+          title: "Driver Photo",
+          type: "profile",
+          path: d.profile_image || "",
+          url: getFullUrl(req, d.profile_image),
+          uploaded: Boolean(d.profile_image),
+          status: verificationStatus,
+        },
+      ],
+
+      user: d.user || null,
+      vehicle: d.vehicle
+        ? `${d.vehicle.vehicle_name || ""} (${d.vehicle.registration_no || ""})`
+        : "Unassigned",
+      vehicleId: d.vehicle?.id || null,
+      vehicleDetails: d.vehicle
+        ? {
+            id: d.vehicle.id,
+            name: d.vehicle.vehicle_name,
+            registrationNo: d.vehicle.registration_no,
+            manufacturer: d.vehicle.manufacturer,
+            model: d.vehicle.model,
+            manufacturingYear: d.vehicle.manufacturing_year,
+            colour: d.vehicle.colour,
+            seatingCapacity: d.vehicle.seating_capacity,
+            fuelType: d.vehicle.fuel_type,
+            rcNumber: d.vehicle.rc_number,
+            insuranceNo: d.vehicle.insurance_no,
+            insuranceExpiryDate: d.vehicle.insurance_expiry_date,
+            permitNumber: d.vehicle.permit_number,
+            permitExpiryDate: d.vehicle.permit_expiry_date,
+            status: d.vehicle.status,
+            vehicleType: d.vehicle.vehicleType
+              ? {
+                  id: d.vehicle.vehicleType.id,
+                  name: d.vehicle.vehicleType.name,
+                  category: d.vehicle.vehicleType.vehicle_category,
+                  baseFare: d.vehicle.vehicleType.base_fare,
+                  perKmRate: d.vehicle.vehicleType.per_km_rate,
+                }
+              : null,
+          }
+        : null,
+    };
+
+    return successResponse(res, "Driver details fetched successfully", formatted);
+  } catch (error) {
+    return errorResponse(res, 500, "Failed to fetch driver details", error);
   }
 };
 
@@ -667,6 +1137,8 @@ exports.getVehicles = async (req, res) => {
         { registration_no: { [Op.like]: `%${search}%` } },
         { manufacturer: { [Op.like]: `%${search}%` } },
         { model: { [Op.like]: `%${search}%` } },
+        { rc_number: { [Op.like]: `%${search}%` } },
+        { insurance_no: { [Op.like]: `%${search}%` } },
       ];
     }
 
@@ -674,36 +1146,190 @@ exports.getVehicles = async (req, res) => {
       where: whereCondition,
       include: [
         { model: VehicleType, as: "vehicleType", required: false },
-        { model: Driver, as: "driver", required: false },
+        {
+          model: Driver,
+          as: "driver",
+          required: false,
+          include: [
+            {
+              model: User,
+              as: "user",
+              required: false,
+              attributes: ["id", "username", "email", "mobile_no"],
+            },
+          ],
+        },
       ],
       order: [["id", "DESC"]],
     });
 
     const [total, available, booked, maintenance] = await Promise.all([
       Vehicle.count().catch(() => 0),
-      Vehicle.count({ where: { status: "Available" } }).catch(() => 0),
-      Vehicle.count({ where: { status: "Booked" } }).catch(() => 0),
-      Vehicle.count({ where: { status: "Maintenance" } }).catch(() => 0),
+      Vehicle.count({ where: { status: { [Op.in]: ["Available", "active", "Active"] } } }).catch(
+        () => 0,
+      ),
+      Vehicle.count({ where: { status: { [Op.in]: ["Booked", "booked"] } } }).catch(() => 0),
+      Vehicle.count({
+        where: { status: { [Op.in]: ["Maintenance", "maintenance", "inactive", "Inactive"] } },
+      }).catch(() => 0),
     ]);
 
-    const formatted = rows.map((v) => ({
-      id: v.id,
-      name: v.vehicle_name || `${v.manufacturer || ""} ${v.model || ""}`.trim() || "Vehicle",
-      plateNumber: v.registration_no || "N/A",
-      type: v.vehicleType?.name || v.manufacturer || "Car",
-      seating: `${v.seating_capacity || 4} Seats`,
-      seatingCapacity: v.seating_capacity || 4,
-      fuel: v.fuel_type ? v.fuel_type.charAt(0).toUpperCase() + v.fuel_type.slice(1) : "Petrol",
-      transmission: "Manual",
-      status: v.status || "Available",
-      driver: v.driver
-        ? `${v.driver.first_name || ""} ${v.driver.last_name || ""}`.trim()
-        : "Unassigned",
-      driverId: v.driver_id || null,
-      image: "",
-      numberPlateImage: "",
-      insuranceImage: "",
-    }));
+    const formatted = rows.map((v) => {
+      const isInsuranceExpired = v.insurance_expiry_date
+        ? new Date(v.insurance_expiry_date) < new Date()
+        : false;
+      const isPermitExpired = v.permit_expiry_date
+        ? new Date(v.permit_expiry_date) < new Date()
+        : false;
+
+      return {
+        id: v.id,
+        name: v.vehicle_name || `${v.manufacturer || ""} ${v.model || ""}`.trim() || "Vehicle",
+        vehicleName: v.vehicle_name || "",
+        vehicle_name: v.vehicle_name || "",
+        plateNumber: v.registration_no || "N/A",
+        vehicleNumber: v.registration_no || "",
+        registrationNo: v.registration_no || "",
+        registration_no: v.registration_no || "",
+        manufacturer: v.manufacturer || "",
+        brand: v.manufacturer || "",
+        model: v.model || "",
+        manufacturingYear: v.manufacturing_year || null,
+        manufacturing_year: v.manufacturing_year || null,
+        year: v.manufacturing_year || null,
+        colour: v.colour || "",
+        color: v.colour || "",
+        seating: `${v.seating_capacity || 4} Seats`,
+        seatingCapacity: v.seating_capacity || 4,
+        seating_capacity: v.seating_capacity || 4,
+        seats: v.seating_capacity || 4,
+        fuel: v.fuel_type ? v.fuel_type.charAt(0).toUpperCase() + v.fuel_type.slice(1) : "Petrol",
+        fuelType: v.fuel_type || "petrol",
+        fuel_type: v.fuel_type || "petrol",
+        transmission: "Manual",
+        status: v.status || "Available",
+        price: v.vehicleType?.base_fare ? Number(v.vehicleType.base_fare) : 500,
+        baseFare: v.vehicleType?.base_fare ? Number(v.vehicleType.base_fare) : 500,
+        perKmRate: v.vehicleType?.per_km_rate ? Number(v.vehicleType.per_km_rate) : 12,
+        rcNumber: v.rc_number || "",
+        rc_number: v.rc_number || "",
+        insuranceNo: v.insurance_no || "",
+        insuranceNumber: v.insurance_no || "",
+        insurance_no: v.insurance_no || "",
+        insuranceExpiry: v.insurance_expiry_date
+          ? new Date(v.insurance_expiry_date).toISOString().split("T")[0]
+          : "",
+        insuranceExpiryDate: v.insurance_expiry_date || null,
+        insurance_expiry_date: v.insurance_expiry_date || null,
+        vehicleInsurance: Boolean(v.insurance_no),
+        isInsuranceExpired,
+        permitNumber: v.permit_number || "",
+        permit_number: v.permit_number || "",
+        permitExpiry: v.permit_expiry_date
+          ? new Date(v.permit_expiry_date).toISOString().split("T")[0]
+          : "",
+        permitExpiryDate: v.permit_expiry_date || null,
+        permit_expiry_date: v.permit_expiry_date || null,
+        isPermitExpired,
+        type: v.vehicleType?.name || v.manufacturer || "Car",
+        vehicleCategory: v.vehicleType?.vehicle_category || "car",
+        vehicle_category: v.vehicleType?.vehicle_category || "car",
+        vehicleTypeId: v.vehicle_type_id,
+        vehicle_type_id: v.vehicle_type_id,
+        vehicleType: v.vehicleType
+          ? {
+              id: v.vehicleType.id,
+              name: v.vehicleType.name,
+              category: v.vehicleType.vehicle_category,
+              vehicle_category: v.vehicleType.vehicle_category,
+              description: v.vehicleType.description,
+              seatingCapacity: v.vehicleType.seating_capacity,
+              luggageCapacity: v.vehicleType.luggage_capacity,
+              baseFare: v.vehicleType.base_fare,
+              perKmRate: v.vehicleType.per_km_rate,
+              perHourRate: v.vehicleType.per_hour_rate,
+              status: v.vehicleType.status,
+            }
+          : null,
+        driver: v.driver
+          ? `${v.driver.first_name || ""} ${v.driver.last_name || ""}`.trim()
+          : "Unassigned",
+        driverName: v.driver
+          ? `${v.driver.first_name || ""} ${v.driver.last_name || ""}`.trim()
+          : "Unassigned",
+        driverId: v.driver_id || null,
+        driver_id: v.driver_id || null,
+        driverDetails: v.driver
+          ? {
+              id: v.driver.id,
+              userId: v.driver.user_id,
+              driverCode: v.driver.driver_code,
+              name:
+                `${v.driver.first_name || ""} ${v.driver.last_name || ""}`.trim() ||
+                v.driver.user?.username ||
+                "Driver",
+              mobile: v.driver.mobile_number || v.driver.user?.mobile_no || "",
+              email: v.driver.email || v.driver.user?.email || "",
+              status: v.driver.status,
+              verificationStatus: v.driver.verification_status,
+              isVerified: Boolean(v.driver.isVerified ?? v.driver.is_verified),
+              profileImage: v.driver.profile_image || "",
+              profileImageUrl: getFullUrl(req, v.driver.profile_image),
+            }
+          : null,
+        documents: {
+          rc: {
+            title: "Registration Certificate (RC)",
+            number: v.rc_number || "",
+            status: v.rc_number ? "valid" : "missing",
+          },
+          insurance: {
+            title: "Insurance Policy",
+            number: v.insurance_no || "",
+            expiryDate: v.insurance_expiry_date || null,
+            isExpired: isInsuranceExpired,
+            status: v.insurance_no ? (isInsuranceExpired ? "expired" : "valid") : "missing",
+          },
+          permit: {
+            title: "Commercial Permit",
+            number: v.permit_number || "",
+            expiryDate: v.permit_expiry_date || null,
+            isExpired: isPermitExpired,
+            status: v.permit_number ? (isPermitExpired ? "expired" : "valid") : "missing",
+          },
+        },
+        documentList: [
+          {
+            id: "rc",
+            title: "Registration Certificate (RC)",
+            documentNumber: v.rc_number || "",
+            expiryDate: null,
+            status: v.rc_number ? "valid" : "missing",
+          },
+          {
+            id: "insurance",
+            title: "Insurance Policy",
+            documentNumber: v.insurance_no || "",
+            expiryDate: v.insurance_expiry_date || null,
+            status: v.insurance_no ? (isInsuranceExpired ? "expired" : "valid") : "missing",
+          },
+          {
+            id: "permit",
+            title: "Commercial Permit",
+            documentNumber: v.permit_number || "",
+            expiryDate: v.permit_expiry_date || null,
+            status: v.permit_number ? (isPermitExpired ? "expired" : "valid") : "missing",
+          },
+        ],
+        image: "",
+        numberPlateImage: "",
+        insuranceImage: "",
+        createdAt: v.created_at ? new Date(v.created_at).toISOString().split("T")[0] : "",
+        created_at: v.created_at,
+        updatedAt: v.updated_at ? new Date(v.updated_at).toISOString().split("T")[0] : "",
+        updated_at: v.updated_at,
+      };
+    });
 
     return successResponse(res, "Vehicles fetched successfully", formatted, {
       total,
@@ -716,25 +1342,211 @@ exports.getVehicles = async (req, res) => {
   }
 };
 
+exports.getVehicleById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const v = await Vehicle.findByPk(id, {
+      include: [
+        { model: VehicleType, as: "vehicleType", required: false },
+        {
+          model: Driver,
+          as: "driver",
+          required: false,
+          include: [
+            {
+              model: User,
+              as: "user",
+              required: false,
+              attributes: ["id", "username", "email", "mobile_no"],
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!v) {
+      return errorResponse(res, 404, "Vehicle not found");
+    }
+
+    const isInsuranceExpired = v.insurance_expiry_date
+      ? new Date(v.insurance_expiry_date) < new Date()
+      : false;
+    const isPermitExpired = v.permit_expiry_date
+      ? new Date(v.permit_expiry_date) < new Date()
+      : false;
+
+    const formatted = {
+      id: v.id,
+      name: v.vehicle_name || `${v.manufacturer || ""} ${v.model || ""}`.trim() || "Vehicle",
+      vehicleName: v.vehicle_name || "",
+      vehicle_name: v.vehicle_name || "",
+      plateNumber: v.registration_no || "N/A",
+      registrationNo: v.registration_no || "",
+      registration_no: v.registration_no || "",
+      manufacturer: v.manufacturer || "",
+      model: v.model || "",
+      manufacturingYear: v.manufacturing_year || null,
+      manufacturing_year: v.manufacturing_year || null,
+      colour: v.colour || "",
+      color: v.colour || "",
+      seating: `${v.seating_capacity || 4} Seats`,
+      seatingCapacity: v.seating_capacity || 4,
+      seating_capacity: v.seating_capacity || 4,
+      fuel: v.fuel_type ? v.fuel_type.charAt(0).toUpperCase() + v.fuel_type.slice(1) : "Petrol",
+      fuelType: v.fuel_type || "petrol",
+      fuel_type: v.fuel_type || "petrol",
+      transmission: "Manual",
+      status: v.status || "Available",
+      rcNumber: v.rc_number || "",
+      rc_number: v.rc_number || "",
+      insuranceNo: v.insurance_no || "",
+      insuranceNumber: v.insurance_no || "",
+      insurance_no: v.insurance_no || "",
+      insuranceExpiryDate: v.insurance_expiry_date || null,
+      insurance_expiry_date: v.insurance_expiry_date || null,
+      isInsuranceExpired,
+      permitNumber: v.permit_number || "",
+      permit_number: v.permit_number || "",
+      permitExpiryDate: v.permit_expiry_date || null,
+      permit_expiry_date: v.permit_expiry_date || null,
+      isPermitExpired,
+      type: v.vehicleType?.name || v.manufacturer || "Car",
+      vehicleCategory: v.vehicleType?.vehicle_category || "car",
+      vehicle_category: v.vehicleType?.vehicle_category || "car",
+      vehicleTypeId: v.vehicle_type_id,
+      vehicle_type_id: v.vehicle_type_id,
+      vehicleType: v.vehicleType
+        ? {
+            id: v.vehicleType.id,
+            name: v.vehicleType.name,
+            category: v.vehicleType.vehicle_category,
+            vehicle_category: v.vehicleType.vehicle_category,
+            description: v.vehicleType.description,
+            seatingCapacity: v.vehicleType.seating_capacity,
+            luggageCapacity: v.vehicleType.luggage_capacity,
+            baseFare: v.vehicleType.base_fare,
+            perKmRate: v.vehicleType.per_km_rate,
+            perHourRate: v.vehicleType.per_hour_rate,
+            status: v.vehicleType.status,
+          }
+        : null,
+      driver: v.driver
+        ? `${v.driver.first_name || ""} ${v.driver.last_name || ""}`.trim()
+        : "Unassigned",
+      driverId: v.driver_id || null,
+      driver_id: v.driver_id || null,
+      driverDetails: v.driver
+        ? {
+            id: v.driver.id,
+            userId: v.driver.user_id,
+            driverCode: v.driver.driver_code,
+            name:
+              `${v.driver.first_name || ""} ${v.driver.last_name || ""}`.trim() ||
+              v.driver.user?.username ||
+              "Driver",
+            mobile: v.driver.mobile_number || v.driver.user?.mobile_no || "",
+            email: v.driver.email || v.driver.user?.email || "",
+            status: v.driver.status,
+            verificationStatus: v.driver.verification_status,
+            isVerified: Boolean(v.driver.isVerified ?? v.driver.is_verified),
+            profileImage: v.driver.profile_image || "",
+            profileImageUrl: getFullUrl(req, v.driver.profile_image),
+          }
+        : null,
+      documents: {
+        rc: {
+          title: "Registration Certificate (RC)",
+          number: v.rc_number || "",
+          status: v.rc_number ? "valid" : "missing",
+        },
+        insurance: {
+          title: "Insurance Policy",
+          number: v.insurance_no || "",
+          expiryDate: v.insurance_expiry_date || null,
+          isExpired: isInsuranceExpired,
+          status: v.insurance_no ? (isInsuranceExpired ? "expired" : "valid") : "missing",
+        },
+        permit: {
+          title: "Commercial Permit",
+          number: v.permit_number || "",
+          expiryDate: v.permit_expiry_date || null,
+          isExpired: isPermitExpired,
+          status: v.permit_number ? (isPermitExpired ? "expired" : "valid") : "missing",
+        },
+      },
+      documentList: [
+        {
+          id: "rc",
+          title: "Registration Certificate (RC)",
+          documentNumber: v.rc_number || "",
+          expiryDate: null,
+          status: v.rc_number ? "valid" : "missing",
+        },
+        {
+          id: "insurance",
+          title: "Insurance Policy",
+          documentNumber: v.insurance_no || "",
+          expiryDate: v.insurance_expiry_date || null,
+          status: v.insurance_no ? (isInsuranceExpired ? "expired" : "valid") : "missing",
+        },
+        {
+          id: "permit",
+          title: "Commercial Permit",
+          documentNumber: v.permit_number || "",
+          expiryDate: v.permit_expiry_date || null,
+          status: v.permit_number ? (isPermitExpired ? "expired" : "valid") : "missing",
+        },
+      ],
+      createdAt: v.created_at ? new Date(v.created_at).toISOString().split("T")[0] : "",
+      created_at: v.created_at,
+      updatedAt: v.updated_at ? new Date(v.updated_at).toISOString().split("T")[0] : "",
+      updated_at: v.updated_at,
+    };
+
+    return successResponse(res, "Vehicle details fetched successfully", formatted);
+  } catch (error) {
+    return errorResponse(res, 500, "Failed to fetch vehicle details", error);
+  }
+};
+
 exports.createVehicle = async (req, res) => {
   try {
     const {
       name,
+      vehicleName,
       plateNumber,
+      registrationNo,
       type,
+      vehicleTypeId,
       seatingCapacity = 4,
       fuel = "petrol",
+      fuelType,
       status = "Available",
       driverId = null,
       manufacturer,
       model,
+      manufacturingYear,
       colour = "White",
+      color,
+      rcNumber,
+      insuranceNo,
+      insuranceNumber,
+      insuranceExpiryDate,
+      permitNumber,
+      permitExpiryDate,
     } = req.body;
 
-    if (!plateNumber) return errorResponse(res, 400, "Registration number is required");
+    const regNo = plateNumber || registrationNo;
+    if (!regNo) return errorResponse(res, 400, "Registration number is required");
 
     // Find or create vehicle type
-    let vt = await VehicleType.findOne({ where: { name: type || "Car" } });
+    let vt = null;
+    if (vehicleTypeId) {
+      vt = await VehicleType.findByPk(vehicleTypeId);
+    }
+    if (!vt && type) {
+      vt = await VehicleType.findOne({ where: { name: type } });
+    }
     if (!vt) {
       vt = await VehicleType.findOne();
     }
@@ -743,18 +1555,20 @@ exports.createVehicle = async (req, res) => {
       vehicle_type_id: vt ? vt.id : 1,
       driver_id: driverId || 1,
       user_id: 1,
-      registration_no: plateNumber,
-      vehicle_name: name || `${manufacturer || "Standard"} ${model || "Car"}`,
+      registration_no: regNo,
+      vehicle_name: name || vehicleName || `${manufacturer || "Standard"} ${model || "Car"}`,
       manufacturer: manufacturer || "Toyota",
       model: model || "Standard",
-      colour,
+      manufacturing_year: Number(manufacturingYear) || new Date().getFullYear(),
+      colour: colour || color || "White",
       seating_capacity: Number(seatingCapacity) || 4,
-      fuel_type: (fuel || "petrol").toLowerCase(),
-      rc_number: plateNumber,
-      insurance_no: "INS-" + Date.now().toString().slice(-6),
-      insurance_expiry_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-      permit_number: "PRM-" + Date.now().toString().slice(-6),
-      permit_expiry_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      fuel_type: (fuel || fuelType || "petrol").toLowerCase(),
+      rc_number: rcNumber || regNo,
+      insurance_no: insuranceNo || insuranceNumber || "INS-" + Date.now().toString().slice(-6),
+      insurance_expiry_date:
+        insuranceExpiryDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      permit_number: permitNumber || "PRM-" + Date.now().toString().slice(-6),
+      permit_expiry_date: permitExpiryDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
       status: status || "Available",
     });
 
@@ -770,14 +1584,51 @@ exports.updateVehicle = async (req, res) => {
     const vehicle = await Vehicle.findByPk(id);
     if (!vehicle) return errorResponse(res, 404, "Vehicle not found");
 
-    const { name, plateNumber, seatingCapacity, fuel, status, driverId } = req.body;
+    const {
+      name,
+      vehicleName,
+      plateNumber,
+      registrationNo,
+      seatingCapacity,
+      fuel,
+      fuelType,
+      status,
+      driverId,
+      manufacturer,
+      model,
+      manufacturingYear,
+      colour,
+      color,
+      rcNumber,
+      insuranceNo,
+      insuranceNumber,
+      insuranceExpiryDate,
+      permitNumber,
+      permitExpiryDate,
+      vehicleTypeId,
+    } = req.body;
+
     const updateData = {};
-    if (name) updateData.vehicle_name = name;
-    if (plateNumber) updateData.registration_no = plateNumber;
-    if (seatingCapacity) updateData.seating_capacity = Number(seatingCapacity);
-    if (fuel) updateData.fuel_type = fuel.toLowerCase();
-    if (status) updateData.status = status;
+    if (name !== undefined || vehicleName !== undefined)
+      updateData.vehicle_name = name || vehicleName;
+    if (plateNumber !== undefined || registrationNo !== undefined)
+      updateData.registration_no = plateNumber || registrationNo;
+    if (manufacturer !== undefined) updateData.manufacturer = manufacturer;
+    if (model !== undefined) updateData.model = model;
+    if (manufacturingYear !== undefined) updateData.manufacturing_year = Number(manufacturingYear);
+    if (colour !== undefined || color !== undefined) updateData.colour = colour || color;
+    if (seatingCapacity !== undefined) updateData.seating_capacity = Number(seatingCapacity);
+    if (fuel !== undefined || fuelType !== undefined)
+      updateData.fuel_type = (fuel || fuelType).toLowerCase();
+    if (status !== undefined) updateData.status = status;
     if (driverId !== undefined) updateData.driver_id = driverId;
+    if (rcNumber !== undefined) updateData.rc_number = rcNumber;
+    if (insuranceNo !== undefined || insuranceNumber !== undefined)
+      updateData.insurance_no = insuranceNo || insuranceNumber;
+    if (insuranceExpiryDate !== undefined) updateData.insurance_expiry_date = insuranceExpiryDate;
+    if (permitNumber !== undefined) updateData.permit_number = permitNumber;
+    if (permitExpiryDate !== undefined) updateData.permit_expiry_date = permitExpiryDate;
+    if (vehicleTypeId !== undefined) updateData.vehicle_type_id = vehicleTypeId;
 
     await vehicle.update(updateData);
     return successResponse(res, "Vehicle updated successfully", vehicle);
@@ -887,6 +1738,28 @@ exports.updateVehicleType = async (req, res) => {
     return successResponse(res, "Vehicle type updated successfully", vt);
   } catch (error) {
     return errorResponse(res, 500, "Failed to update vehicle type", error);
+  }
+};
+
+exports.updateVehicleTypeStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const vt = await VehicleType.findByPk(id);
+    if (!vt) return errorResponse(res, 404, "Vehicle type not found");
+
+    const newStatus = status
+      ? status.toLowerCase() === "active"
+        ? "active"
+        : "inactive"
+      : vt.status === "active"
+        ? "inactive"
+        : "active";
+
+    await vt.update({ status: newStatus });
+    return successResponse(res, `Vehicle type marked as ${newStatus} successfully`, vt);
+  } catch (error) {
+    return errorResponse(res, 500, "Failed to update vehicle type status", error);
   }
 };
 
@@ -1528,7 +2401,7 @@ exports.login = async (req, res) => {
       const token = jwt.sign(
         { id: user.id, email: user.email, type: user.user_type || "ADMIN" },
         process.env.JWT_SECRET || "secretKey",
-        { expiresIn: "7d" },
+        { expiresIn: process.env.JWT_EXPIRES_IN || "30d" },
       );
 
       return res.status(200).json({
@@ -1551,7 +2424,7 @@ exports.login = async (req, res) => {
       const token = jwt.sign(
         { id: 1, email: "admin@batohidrive.com", type: "ADMIN" },
         process.env.JWT_SECRET || "secretKey",
-        { expiresIn: "7d" },
+        { expiresIn: process.env.JWT_EXPIRES_IN || "30d" },
       );
       return res.status(200).json({
         success: true,

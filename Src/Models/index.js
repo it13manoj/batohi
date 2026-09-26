@@ -18,6 +18,9 @@ const Invoice = require("./invoice");
 const Review = require("./review");
 const Notification = require("./notification");
 const Setting = require("./setting");
+const Booked = require("./booked");
+const Otp = require("./otp");
+const LiveTracking = require("./liveTracking");
 
 // ================= USER ASSOCIATIONS =================
 
@@ -194,6 +197,15 @@ Review.belongsTo(Booking, { foreignKey: "booking_id", as: "booking" });
 User.hasMany(Notification, { foreignKey: "user_id", as: "notifications" });
 Notification.belongsTo(User, { foreignKey: "user_id", as: "user" });
 
+// ================= LIVE TRACKING ASSOCIATIONS =================
+LiveTracking.belongsTo(User, { foreignKey: "driver_id", as: "driver" });
+LiveTracking.belongsTo(User, { foreignKey: "user_id", as: "rider" });
+LiveTracking.belongsTo(Booked, { foreignKey: "booking_id", as: "booking" });
+
+User.hasMany(LiveTracking, { foreignKey: "driver_id", as: "driverTrackings" });
+User.hasMany(LiveTracking, { foreignKey: "user_id", as: "riderTrackings" });
+Booked.hasMany(LiveTracking, { foreignKey: "booking_id", as: "liveTrackings" });
+
 module.exports = {
   Role,
   User,
@@ -203,6 +215,9 @@ module.exports = {
   Vehicle,
   VehicleType,
   Booking,
+  Booked,
+  Otp,
+  LiveTracking,
   DriverVehicle,
   Trip,
   SubscriptionPlan,

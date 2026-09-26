@@ -31,6 +31,10 @@ const notificationRoute = require("./Src/Routes/notification.route");
 const locationRoute = require("./Src/Routes/location.route");
 const roleRoutes = require("./Src/Routes/role.route");
 const tripRoute = require("./Src/Routes/trip.route");
+const liveTrackingRoute = require("./Src/Routes/liveTracking.route");
+
+// Load all database models and associations
+require("./Src/Models/index");
 
 app.use(
   cors({
@@ -47,8 +51,9 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(bodyparser.json({ limit: "50mb" }));
 app.use(bodyparser.urlencoded({ limit: "50mb", extended: true }));
 
+app.use("/images", express.static(path.join(__dirname, "Src/uploads/images")));
+app.use("/uploads/images", express.static(path.join(__dirname, "Src/uploads/images")));
 app.use("/uploads", express.static(path.join(__dirname, "Src/uploads")));
-
 app.use("/assets", express.static(path.join(__dirname, "Src/assets")));
 
 app.get("/firebase-messaging-sw.js", (req, res) => {
@@ -75,14 +80,20 @@ app.use("/api/v1/review", reviewRoute);
 app.use("/api/v1/trip", tripRoute);
 app.use("/api/v1/notification", notificationRoute);
 app.use("/api/v1/locatiion", locationRoute);
+app.use("/api/v1/live-tracking", liveTrackingRoute);
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+const { autoAlterTables } = require("./Src/config/autoAlter");
 
 async function startServer() {
   try {
     await sequelize.authenticate();
     console.log("database connected");
-    await sequelize.sync();
-    console.log("database synced");
+
+    // Automatically alter existing tables to match updated model schemas on project start
+    await autoAlterTables(sequelize);
+    console.log("Database synced and tables auto-altered as per model schemas");
+
     http.createServer(app).listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
     });

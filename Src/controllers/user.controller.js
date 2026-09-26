@@ -2,19 +2,19 @@ const bcrypt = require("bcrypt");
 const fs = require("fs");
 const path = require("path");
 const { User, Customer, Role, Driver, Vehicle, VehicleType } = require("../Models/index");
-// const User = require("../Models/user");
-const { where } = require("sequelize");
+const { where, Sequelize, Op } = require("sequelize");
 const jwt = require("jsonwebtoken");
 const sendResponse = require("../Utils/reponse");
 const driverData = require("../Utils/driver.json");
-
-const { Sequelize, Op } = require("sequelize");
+const otp = require("../Models/otp");
+const { sendRegistrationEmail, sendOtpEmail } = require("../Utils/email");
 
 exports.create = async (req, res) => {
   try {
     const {
       username,
       email,
+      mobile_no,
       mobile,
       password,
       user_type,
@@ -23,51 +23,66 @@ exports.create = async (req, res) => {
       agency_code,
     } = req.body;
 
-    // 1. Fetch the single role record matching the user_type
+    const phone = mobile_no || mobile;
+
+    // 1. Find Role
     const findRole = await Role.findOne({
       where: { name: user_type },
     });
 
-    console.log(findRole, user_type);
+    console.log("ROLE:", findRole, "USER TYPE:", user_type);
 
-    // 2. Validate that the role exists
+    // 2. Validate Role
     if (!findRole) {
       return sendResponse(res, 400, "Invalid user type or role not found");
     }
 
-    // 3. Hash the password
+    // 3. Hash Password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 4. Create the user with proper role ID and conditional fields
+    // 4. Create User
     const newUser = await User.create({
       username: username,
       email: email,
-      mobile_no: mobile,
+      mobile_no: phone,
       password_hash: hashedPassword,
       user_type: user_type,
-      role_id: findRole.id, // Extract the ID property from the found role
+      role_id: findRole.id,
+
       ...(user_type === "DRIVER" && {
         license_number,
         vehicle_number,
       }),
+
       ...(user_type === "AGENTS" && {
         agency_code,
       }),
     });
+
+    // 5. Create Driver
     if (user_type === "DRIVER") {
       const driverColumn = {
         ...driverData,
         driving_license_no: license_number,
         user_id: newUser.id,
-        first_name: username.split(" ")?.[0],
-        last_name: username.split(" ")?.[1],
+        first_name: username ? username.split(" ")?.[0] : "",
+        last_name: username ? username.split(" ")?.[1] || "" : "",
         email: email,
-        mobile_number: mobile,
+        mobile_number: phone,
       };
 
       await Driver.create(driverColumn);
     }
 
+    // 6. Send Registration Email
+    try {
+      await sendRegistrationEmail(email, username);
+      console.log("✅ Registration email sent successfully");
+    } catch (emailError) {
+      console.error("❌ Registration email failed:", emailError.message);
+    }
+
+    // 7. Final Response
     return sendResponse(res, 200, "User created successfully", newUser);
   } catch (error) {
     console.error("User Creation Error:", error);
@@ -77,25 +92,203 @@ exports.create = async (req, res) => {
 
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const user = await User.findOne({
-      where: {
-        email: email,
-        is_deleted: false,
-        is_blocked: false,
-        status: true,
-      },
-    });
-    if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
+    const { email, password, role } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required",
+      });
     }
 
+    // =========================
+    // FIND USER (Support flexible role or fallback to email)
+    // =========================
+    const cleanEmail = email.trim();
+    const whereCondition = {
+      email: cleanEmail,
+      is_deleted: false,
+    };
+
+    if (role && role !== "ALL") {
+      const normalizedRole = role.toUpperCase();
+      if (normalizedRole === "AGENT" || normalizedRole === "AGENTS") {
+        whereCondition.user_type = { [Op.in]: ["AGENT", "AGENTS"] };
+      } else {
+        whereCondition.user_type = normalizedRole;
+      }
+    }
+
+    let user = await User.findOne({ where: whereCondition });
+
+    // Fallback: If not found with specific role, match by email directly
+    if (!user && role) {
+      user = await User.findOne({
+        where: {
+          email: cleanEmail,
+          is_deleted: false,
+        },
+      });
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Account not found with this email",
+      });
+    }
+
+    if (user.is_blocked) {
+      return res.status(403).json({
+        success: false,
+        message: "Account is blocked. Please contact support.",
+      });
+    }
+
+    if (user.status === false) {
+      return res.status(403).json({
+        success: false,
+        message: "Account is inactive. Please contact administrator.",
+      });
+    }
+
+    // =========================
+    // PASSWORD VERIFY
+    // =========================
     const isMatch = await bcrypt.compare(password, user.password_hash);
 
     if (!isMatch) {
-      return res.status(401).json({ success: false, message: "Invalid password" });
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials. Please check your password.",
+      });
     }
 
+    // =========================
+    // GENERATE 6 DIGIT OTP
+    // =========================
+    const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // OTP EXPIRY (10 MINUTES)
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+
+    // Delete previous OTPs for this user
+    await otp.destroy({
+      where: {
+        user_id: user.id,
+      },
+    });
+
+    // Save new OTP in OTP table
+    await otp.create({
+      user_id: user.id,
+      otp: generatedOtp,
+      booked_id: null,
+      otp_expiry: otpExpiry,
+    });
+
+    // SEND REAL-TIME OTP EMAIL
+    try {
+      await sendOtpEmail(user.email, user.username || "User", generatedOtp);
+      console.log(`✅ Real-time OTP sent to ${user.email}`);
+    } catch (emailError) {
+      console.error("❌ Send OTP email failed:", emailError.message);
+      return res.status(500).json({
+        success: false,
+        message: `Unable to send OTP to ${user.email}. Please verify your email or try again.`,
+        error: emailError.message,
+      });
+    }
+
+    console.log("LOGIN OTP GENERATED:", generatedOtp, "USER ID:", user.id);
+
+    // =========================
+    // RESPONSE FOR OTP VERIFICATION PANEL
+    // =========================
+    return res.status(200).json({
+      success: true,
+      message: `A 6-digit OTP code has been sent to ${user.email}`,
+      user_id: user.id,
+      email: user.email,
+      user_type: user.user_type,
+      otp_required: true,
+    });
+  } catch (error) {
+    console.error("Login Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Login failed",
+      error: error.message,
+    });
+  }
+};
+
+exports.verifyOtp = async (req, res) => {
+  try {
+    const { user_id, email, otp: enteredOtp } = req.body;
+
+    // Check required fields
+    if ((!user_id && !email) || !enteredOtp) {
+      return res.status(400).json({
+        success: false,
+        message: "user_id or email, and otp are required",
+      });
+    }
+
+    // Find user by user_id or email
+    let user;
+    if (user_id) {
+      user = await User.findByPk(user_id);
+    } else if (email) {
+      user = await User.findOne({ where: { email: String(email).trim() } });
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const inputOtp = String(enteredOtp).trim();
+
+    // Find OTP in DB
+    const otpData = await otp.findOne({
+      where: {
+        user_id: user.id,
+        otp: inputOtp,
+      },
+      order: [["created_at", "DESC"]],
+    });
+
+    if (!otpData) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP. Please enter the 6-digit code received on your email.",
+      });
+    }
+
+    // Check expiry
+    const expiryTime = otpData.otp_expiry
+      ? new Date(otpData.otp_expiry)
+      : new Date(new Date(otpData.created_at).getTime() + 10 * 60 * 1000);
+
+    if (new Date() > expiryTime) {
+      await otp.destroy({ where: { id: otpData.id } });
+      return res.status(400).json({
+        success: false,
+        message: "OTP has expired. Please click 'Resend OTP' to get a new code.",
+      });
+    }
+
+    // Delete used OTP
+    await otp.destroy({ where: { id: otpData.id } });
+
+    // Update user to verified
+    await User.update({ is_verified: true }, { where: { id: user.id } });
+
+    // JWT SESSION EXPIRATION: 30 DAYS (1 MONTH)
     const token = jwt.sign(
       {
         id: user.id,
@@ -103,27 +296,96 @@ exports.login = async (req, res) => {
         type: user.user_type,
         status: user.status,
       },
-      process.env.JWT_SECRET,
+      process.env.JWT_SECRET || "batohiDriverProjects",
       {
-        expiresIn: process.env.JWT_EXPIRES_IN || "7d",
+        expiresIn: process.env.JWT_EXPIRES_IN || "30d",
       },
     );
 
     return res.status(200).json({
       success: true,
-      message: "Login successful",
+      message: "OTP verified successfully",
       token: token,
       user: {
         id: user.id,
         username: user.username,
         email: user.email,
+        mobile_no: user.mobile_no,
         user_type: user.user_type,
-        role: user.user_type,
+        status: user.status,
+        is_verified: true,
       },
     });
   } catch (error) {
-    console.log(error);
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("OTP Verify Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "OTP verification failed",
+      error: error.message,
+    });
+  }
+};
+
+exports.resendOtp = async (req, res) => {
+  try {
+    const { user_id, email } = req.body;
+    if (!user_id && !email) {
+      return res.status(400).json({
+        success: false,
+        message: "user_id or email is required",
+      });
+    }
+
+    let user;
+    if (user_id) {
+      user = await User.findByPk(user_id);
+    } else if (email) {
+      user = await User.findOne({ where: { email: String(email).trim() } });
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+
+    await otp.destroy({ where: { user_id: user.id } });
+    await otp.create({
+      user_id: user.id,
+      otp: generatedOtp,
+      booked_id: null,
+      otp_expiry: otpExpiry,
+    });
+
+    try {
+      await sendOtpEmail(user.email, user.username || "User", generatedOtp);
+      console.log(`✅ Real-time OTP resent to ${user.email}`);
+    } catch (e) {
+      console.error("Resend OTP email error:", e.message);
+      return res.status(500).json({
+        success: false,
+        message: `Failed to deliver OTP to ${user.email}: ${e.message}`,
+        error: e.message,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `A new 6-digit OTP code has been sent to ${user.email}`,
+      user_id: user.id,
+      email: user.email,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to resend OTP",
+      error: error.message,
+    });
   }
 };
 
@@ -273,7 +535,7 @@ exports.update = async (req, res) => {
       {
         email: req.body.email,
         username: req.body.username,
-        mobile_no: req.body.mobile_no,
+        mobile_no: req.body.mobile_no || req.body.mobile,
       },
       {
         where: { id: id },
@@ -287,15 +549,40 @@ exports.update = async (req, res) => {
 
 exports.destroy = async (req, res) => {
   try {
-    const id = req.params.id;
-    await User.destroy({
+    const id = req.body.id || req.params.id;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "User id is required",
+      });
+    }
+
+    const deleted = await User.destroy({
       where: { id: id },
     });
-    res.send("user destroy");
+
+    if (deleted === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "User destroyed successfully",
+    });
   } catch (error) {
-    res.send(error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to destroy user",
+      error: error.message,
+    });
   }
 };
+
+exports.Delete = exports.destroy;
 
 exports.updateLocation = async (req, res) => {
   try {
@@ -332,79 +619,6 @@ exports.updateLocation = async (req, res) => {
     return sendResponse(res, 500, error.message || "Failed to update location");
   }
 };
-
-// exports.findNearestDrivers = async (req, res) => {
-//   try {
-//     const { latitude, longitude, radius = 10 } = req.query; // radius in km (default 10km)
-
-//     if (!latitude || !longitude) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Latitude and Longitude are required."
-//       });
-//     }
-
-//     const userLat = parseFloat(latitude);
-//     const userLng = parseFloat(longitude);
-
-//     // 6371 is the Earth's radius in kilometers (use 3959 for miles)
-//     const distanceFormula = Sequelize.literal(`
-//       (6371 * acos(
-//         cos(radians(${userLat}))
-//         * cos(radians(User.latitude))
-//         * cos(radians(User.longitude) - radians(${userLng}))
-//         + sin(radians(${userLat}))
-//         * sin(radians(User.latitude))
-//       ))
-//     `);
-
-//    const drivers = await Driver.findAll({
-//   where: {
-//     status: "active"
-//   },
-//   attributes: {
-//     include: [[distanceFormula, "distance_km"]]
-//   },
-//   include: [
-//     {
-//       model: User,
-//       as: "user",
-//       attributes: ["id", "username", "mobile_no", "latitude", "longitude"],
-//       where: {
-//         latitude: { [Op.ne]: null },
-//         longitude: { [Op.ne]: null }
-//       }
-//     },
-//     {
-//       model: Vehicle,
-//       as: "vehicle",
-//       include: [
-//         {
-//           model: VehicleType, // Ensure VehicleType model is imported correctly
-//           as: "vehicleType"
-//         }
-//       ]
-//     }
-//   ],
-//   having: Sequelize.literal(`distance_km <= ${radius}`),
-//   order: [[Sequelize.literal("distance_km"), "ASC"]],
-//   limit: 10
-// });
-
-//     return res.status(200).json({
-//       success: true,
-//       count: drivers.length,
-//       data: drivers
-//     });
-
-//   } catch (error) {
-//     console.error("Find Nearest Drivers Error:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Server error searching for nearby drivers."
-//     });
-//   }
-// };
 
 const calculateHaversineDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371; // Earth's radius in km
@@ -455,8 +669,11 @@ exports.findNearestDrivers = async (req, res) => {
       ))
     `);
 
-    // Build Vehicle filter if vehicleType is provided
-    const vehicleTypeFilter = {};
+    // Build Vehicle filter ensuring only active vehicle types are matched
+    const vehicleTypeFilter = {
+      status: "active",
+      ...(vehicleType ? { name: vehicleType } : {}),
+    };
 
     // Query active drivers nearby
     const drivers = await Driver.findAll({
@@ -482,7 +699,7 @@ exports.findNearestDrivers = async (req, res) => {
             {
               model: VehicleType,
               as: "vehicleType",
-              where: vehicleType ? vehicleTypeFilter : undefined,
+              where: vehicleTypeFilter,
               required: true,
             },
           ],

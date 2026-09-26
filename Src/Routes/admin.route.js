@@ -29,6 +29,7 @@ router.delete("/customers/:id", optionalAuth, adminController.deleteCustomer);
 
 // 3. Drivers
 router.get("/drivers", optionalAuth, adminController.getDrivers);
+router.get("/drivers/:id", optionalAuth, adminController.getDriverById);
 router.post("/drivers", optionalAuth, adminController.createDriver);
 router.put("/drivers/:id", optionalAuth, adminController.updateDriver);
 router.delete("/drivers/:id", optionalAuth, adminController.deleteDriver);
@@ -37,6 +38,7 @@ router.put("/drivers/:id/verify", optionalAuth, adminController.verifyDriver);
 
 // 4. Vehicles
 router.get("/vehicles", optionalAuth, adminController.getVehicles);
+router.get("/vehicles/:id", optionalAuth, adminController.getVehicleById);
 router.post("/vehicles", optionalAuth, adminController.createVehicle);
 router.put("/vehicles/:id", optionalAuth, adminController.updateVehicle);
 router.delete("/vehicles/:id", optionalAuth, adminController.deleteVehicle);
@@ -45,6 +47,8 @@ router.delete("/vehicles/:id", optionalAuth, adminController.deleteVehicle);
 router.get("/vehicle-types", optionalAuth, adminController.getVehicleTypes);
 router.post("/vehicle-types", optionalAuth, adminController.createVehicleType);
 router.put("/vehicle-types/:id", optionalAuth, adminController.updateVehicleType);
+router.patch("/vehicle-types/:id/status", optionalAuth, adminController.updateVehicleTypeStatus);
+router.put("/vehicle-types/:id/status", optionalAuth, adminController.updateVehicleTypeStatus);
 router.delete("/vehicle-types/:id", optionalAuth, adminController.deleteVehicleType);
 
 // 6. Bookings
