@@ -5,6 +5,8 @@
   "main": "app.js",
   "scripts": {
     "start": "nodemon app.js",
+    "migrate": "node migrations/runner.js",
+    "migrate:rollback": "node migrations/runner.js --rollback",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
