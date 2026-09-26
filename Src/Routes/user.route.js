@@ -2,6 +2,7 @@ const express = require("express");
 const { create, login, find, update, Delete, destroy, findById, profile, getProfile, searchRide, updateLocation, findNearestDrivers, deviceToken } = require("../controllers/user.controller");
 const authMiddleware = require("../Middleware/auth.middleware");
 const {upload} = require("../Utils/upload");
+const { makeMemoryCacheProvider } = require("firebase/data-connect");
 
 const Route = express.Router();
 
@@ -20,3 +21,4 @@ Route.get("/nearest", authMiddleware, findNearestDrivers);
 Route.post("/device/token", authMiddleware, deviceToken);
 module.exports = Route;
  
+

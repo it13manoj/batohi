@@ -1192,7 +1192,8 @@ exports.claimFreeTrial = async (req, res) => {
 
         // 6. Update driver vehicle category preference
         await driver.update({ vehicleCategory: vehicleCategory });
-
+                                    
+        
         return res.status(200).json({
             success: true,
             message: 'Free trial activated successfully',

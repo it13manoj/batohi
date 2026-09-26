@@ -14,7 +14,7 @@ const {
 } = require("../Utils/email");
 
 const { Sequelize, Op } = require("sequelize");
-
+ 
 exports.create = async (req, res) => {
     try {
         const {
