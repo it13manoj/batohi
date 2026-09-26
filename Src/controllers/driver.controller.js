@@ -1346,21 +1346,25 @@ exports.activateSubscription = async (req, res) => {
 
 exports.updateVerificationStatus = async (req, res) => {
     try {
-        const driverId = req.user.id;
+        const driverId = req.body?.driverId || req.query?.driverId || req.user?.id;
         const { status, remarks } = req.body;
         const isVerified = status === 'verified';
+        const verificationStatus = isVerified ? 'verified' : (status === 'rejected' ? 'rejected' : 'pending');
 
         await Driver.update(
             {
-                isVerified: isVerified // or is_verified depending on your model field definition
+                isVerified: isVerified,
+                verification_status: verificationStatus
             },
             {
                 where: {
-                    user_id: driverId // or driver_id / id depending on your primary key field
+                    [Op.or]: [
+                        { user_id: driverId },
+                        { id: driverId }
+                    ]
                 }
             }
         );
-
 
         res.json({
             success: true,
