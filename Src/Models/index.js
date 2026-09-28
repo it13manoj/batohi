@@ -8,192 +8,230 @@ const Booking = require("./booking");
 const DriverVehicle = require("./driverVehicle");
 const Role = require("./role");
 const Trip = require("./trip");
-const vehicleType = require("./vehicle.Type");
 const DriverSubscription = require("./DriverSubscription");
 const Transaction = require("./Transaction");
 const SubscriptionPlan = require("./SubscriptionPlan");
 const Coupon = require("./coupon");
-
+const Admin = require("./admin");
+const Payment = require("./payment");
+const Invoice = require("./invoice");
+const Review = require("./review");
+const Notification = require("./notification");
+const Setting = require("./setting");
+const Booked = require("./booked");
+const OTP = require("./otp");
+const LiveTracking = require("./liveTracking");
 
 // ================= USER ASSOCIATIONS =================
 
 Role.hasOne(User, {
-    foreignKey: "role_id",
-    as: "users"
+  foreignKey: "role_id",
+  as: "users",
 });
 
 User.belongsTo(Role, {
-    foreignKey: "role_id",
-    as: "roles"
+  foreignKey: "role_id",
+  as: "roles",
 });
 
 User.hasOne(Driver, {
-    foreignKey: "user_id",
-    as: "driver"
+  foreignKey: "user_id",
+  as: "driver",
 });
 
 Driver.belongsTo(User, {
-    foreignKey: "user_id",
-    as: "user"
+  foreignKey: "user_id",
+  as: "user",
 });
 
-
 User.hasOne(Customer, {
-    foreignKey: "user_id",
-    as: "customer"
+  foreignKey: "user_id",
+  as: "customer",
 });
 
 Customer.belongsTo(User, {
-    foreignKey: "user_id",
-    as: "user"
+  foreignKey: "user_id",
+  as: "user",
 });
 
-
 User.hasOne(Agent, {
-    foreignKey: "user_id",
-    as: "agent"
+  foreignKey: "user_id",
+  as: "agent",
 });
 
 Agent.belongsTo(User, {
-    foreignKey: "user_id",
-    as: "user"
+  foreignKey: "user_id",
+  as: "user",
 });
-
 
 // ================= VEHICLE ASSOCIATIONS =================
 
 VehicleType.hasMany(Vehicle, {
-    foreignKey: "vehicle_type_id",
-    as: "vehicles"
+  foreignKey: "vehicle_type_id",
+  as: "vehicles",
 });
 
 Vehicle.belongsTo(VehicleType, {
-    foreignKey: "vehicle_type_id",
-    as: "vehicleType"
+  foreignKey: "vehicle_type_id",
+  as: "vehicleType",
 });
-
 
 // ================= DRIVER - VEHICLE =================
 
 Driver.hasMany(DriverVehicle, {
-    foreignKey: "driver_id",
-    as: "driverVehicles"
+  foreignKey: "driver_id",
+  as: "driverVehicles",
 });
 
 DriverVehicle.belongsTo(Driver, {
-    foreignKey: "driver_id",
-    as: "driver"
+  foreignKey: "driver_id",
+  as: "driver",
 });
 
-
 Vehicle.hasMany(DriverVehicle, {
-    foreignKey: "vehicle_id",
-    as: "driverVehicles"
+  foreignKey: "vehicle_id",
+  as: "driverVehicles",
 });
 
 DriverVehicle.belongsTo(Vehicle, {
-    foreignKey: "vehicle_id",
-    as: "vehicle"
+  foreignKey: "vehicle_id",
+  as: "vehicle",
 });
-
 
 // ================= BOOKING =================
 
 Booking.belongsTo(Customer, {
-    foreignKey: "customer_id",
-    as: "customer"
+  foreignKey: "customer_id",
+  as: "customer",
 });
 
 Booking.belongsTo(Agent, {
-    foreignKey: "agent_id",
-    as: "agent"
+  foreignKey: "agent_id",
+  as: "agent",
 });
 
 Booking.belongsTo(Driver, {
-    foreignKey: "driver_id",
-    as: "driver"
+  foreignKey: "driver_id",
+  as: "driver",
 });
 
 Booking.belongsTo(Vehicle, {
-    foreignKey: "vehicle_id",
-    as: "vehicle"
+  foreignKey: "vehicle_id",
+  as: "vehicle",
 });
 
 Booking.belongsTo(VehicleType, {
-    foreignKey: "vehicle_type_id",
-    as: "vehicleType"
+  foreignKey: "vehicle_type_id",
+  as: "vehicleType",
 });
 // ================= TRIP ASSOCIATIONS =================
 
 Driver.hasMany(Trip, {
-    foreignKey: "driver_id",
-    as: "trips"
+  foreignKey: "driver_id",
+  as: "trips",
 });
 
 Trip.belongsTo(Driver, {
-    foreignKey: "driver_id",
-    as: "driver"
+  foreignKey: "driver_id",
+  as: "driver",
 });
 
 Vehicle.hasMany(Trip, {
-    foreignKey: "vehicle_id",
-    as: "trips"
+  foreignKey: "vehicle_id",
+  as: "trips",
 });
 
 Trip.belongsTo(Vehicle, {
-    foreignKey: "vehicle_id",
-    as: "vehicle"
+  foreignKey: "vehicle_id",
+  as: "vehicle",
 });
 
 VehicleType.hasMany(Trip, {
-    foreignKey: "vehicle_type_id",
-    as: "trips"
+  foreignKey: "vehicle_type_id",
+  as: "trips",
 });
 
 Trip.belongsTo(VehicleType, {
-    foreignKey: "vehicle_type_id",
-    as: "vehicleType"
+  foreignKey: "vehicle_type_id",
+  as: "vehicleType",
 });
 // ================= EXPORT =================
 
-Driver.hasOne(Vehicle, { // or hasMany
-    foreignKey: "driver_id",
-    as: "vehicle"
+Driver.hasOne(Vehicle, {
+  // or hasMany
+  foreignKey: "driver_id",
+  as: "vehicle",
 });
 
 // Vehicle belongs to a Driver
 Vehicle.belongsTo(Driver, {
-    foreignKey: "driver_id",
-    as: "driver" // Changed alias from "vehicle" to "driver"
+  foreignKey: "driver_id",
+  as: "driver", // Changed alias from "vehicle" to "driver"
 });
 
-Driver.hasMany(DriverSubscription, { foreignKey: 'driver_id', onDelete: 'CASCADE' });
-DriverSubscription.belongsTo(Driver, { foreignKey: 'driver_id' });
+Driver.hasMany(DriverSubscription, { foreignKey: "driver_id", onDelete: "CASCADE" });
+DriverSubscription.belongsTo(Driver, { foreignKey: "driver_id" });
 
-Driver.hasMany(Transaction, { foreignKey: 'driver_id' });
-Transaction.belongsTo(Driver, { foreignKey: 'driver_id' });
+Driver.hasMany(Transaction, { foreignKey: "driver_id" });
+Transaction.belongsTo(Driver, { foreignKey: "driver_id" });
 
 // Plan Associations
-SubscriptionPlan.hasMany(DriverSubscription, { foreignKey: 'plan_id' , as: 'subscriptionplan' });
-DriverSubscription.belongsTo(SubscriptionPlan, { foreignKey: 'plan_id'  , as: 'subscriptionplan'});
+SubscriptionPlan.hasMany(DriverSubscription, { foreignKey: "plan_id", as: "subscriptionplan" });
+DriverSubscription.belongsTo(SubscriptionPlan, { foreignKey: "plan_id", as: "subscriptionplan" });
 
-SubscriptionPlan.hasMany(Transaction, { foreignKey: 'plan_id' });
-Transaction.belongsTo(SubscriptionPlan, { foreignKey: 'plan_id' });
+SubscriptionPlan.hasMany(Transaction, { foreignKey: "plan_id" });
+Transaction.belongsTo(SubscriptionPlan, { foreignKey: "plan_id" });
+
+User.hasOne(Admin, { foreignKey: "user_id", as: "admin" });
+Admin.belongsTo(User, { foreignKey: "user_id", as: "user" });
+
+Booking.hasMany(Payment, { foreignKey: "booking_id", as: "payments" });
+Payment.belongsTo(Booking, { foreignKey: "booking_id", as: "booking" });
+
+Booking.hasOne(Invoice, { foreignKey: "booking_id", as: "invoice" });
+Invoice.belongsTo(Booking, { foreignKey: "booking_id", as: "booking" });
+
+Booking.hasMany(Review, { foreignKey: "booking_id", as: "reviews" });
+Review.belongsTo(Booking, { foreignKey: "booking_id", as: "booking" });
+
+User.hasMany(Notification, { foreignKey: "user_id", as: "notifications" });
+Notification.belongsTo(User, { foreignKey: "user_id", as: "user" });
+
+// ================= LIVE TRACKING ASSOCIATIONS =================
+LiveTracking.belongsTo(User, { foreignKey: "driver_id", as: "driver" });
+LiveTracking.belongsTo(User, { foreignKey: "user_id", as: "rider" });
+LiveTracking.belongsTo(Booked, { foreignKey: "booking_id", as: "booking" });
+
+User.hasMany(LiveTracking, { foreignKey: "driver_id", as: "driverTrackings" });
+User.hasMany(LiveTracking, { foreignKey: "user_id", as: "riderTrackings" });
+Booked.hasMany(LiveTracking, { foreignKey: "booking_id", as: "liveTrackings" });
+
+OTP.hasMany(Booked, { foreignKey: "booked_id", as: "bookOtp" });
+Booked.hasMany(OTP, { foreignKey: "booked_id", as: "bookOtp" });
 
 
 module.exports = {
-    Role,
-    User,
-    Driver,
-    Customer,
-    Agent,
-    Vehicle,
-    VehicleType,
-    Booking,
-    DriverVehicle,
-    Trip,
-    SubscriptionPlan,
-    DriverSubscription,
-    Transaction,
-    Coupon,
+  Role,
+  User,
+  Driver,
+  Customer,
+  Agent,
+  Vehicle,
+  VehicleType,
+  Booking,
+  Booked,
+  OTP,
+  LiveTracking,
+  DriverVehicle,
+  Trip,
+  SubscriptionPlan,
+  DriverSubscription,
+  Transaction,
+  Coupon,
+  Admin,
+  Payment,
+  Invoice,
+  Review,
+  Notification,
+  Setting,
 };
