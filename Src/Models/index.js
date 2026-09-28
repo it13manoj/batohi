@@ -210,6 +210,9 @@ OTP.hasMany(Booked, { foreignKey: "booked_id", as: "bookOtp" });
 Booked.hasMany(OTP, { foreignKey: "booked_id", as: "bookOtp" });
 
 
+
+
+
 module.exports = {
   Role,
   User,

@@ -926,7 +926,7 @@ exports.startRide = async (req, res) => {
 
     // 3. Update booking status using the correct booking_id
     const [updatedRows] = await Booked.update(
-      { status: "started" },
+      { status: "confirmed" },
       {
         where: {
           id: booking_id,
