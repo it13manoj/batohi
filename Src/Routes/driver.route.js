@@ -27,6 +27,7 @@ const {
   updateVehicleCategory,
   createCheckOutSession,
   createCheckoutSession,
+  updateDriverLocation,
 } = require("../controllers/driver.controller");
 const authMiddleware = require("../Middleware/auth.middleware");
 const { upload } = require("../Utils/upload");
@@ -74,6 +75,9 @@ Route.get("/pick/location", authMiddleware, bothLocation);
 Route.put("/complete-ride/:bookingId", authMiddleware, completeRide);
 Route.put("/cancel/:bookingId", authMiddleware, cancelRide);
 
+Route.post("/location/update", authMiddleware, updateDriverLocation);
+Route.put("/location/update", authMiddleware, updateDriverLocation);
+
 Route.get("/status", authMiddleware, getDriverStatus);
 
 // POST: Validate coupon code
@@ -91,11 +95,7 @@ Route.get("/plans", authMiddleware, getPlansByCategory);
 
 Route.get("/active_plans", authMiddleware, getActivePlan);
 
-const completeProfileEndpoints = [
-  "/complete-profile",
-  "/complete_profile",
-  "/completeProfile",
-];
+const completeProfileEndpoints = ["/complete-profile", "/complete_profile", "/completeProfile"];
 Route.post(completeProfileEndpoints, authMiddleware, upload.any(), completeProfile);
 Route.put(completeProfileEndpoints, authMiddleware, upload.any(), completeProfile);
 Route.patch(completeProfileEndpoints, authMiddleware, upload.any(), completeProfile);
