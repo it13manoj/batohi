@@ -18,6 +18,7 @@ const {
   Setting,
   Role,
   Transaction,
+  Booked,
 } = require("../Models/index");
 
 // Helper for standardized API responses
@@ -1790,12 +1791,12 @@ exports.getBookings = async (req, res) => {
       whereCondition.payment_status = payment;
     }
 
-    const rows = await Booking.findAll({
+    const rows = await Booked.findAll({
       where: whereCondition,
       include: [
-        { model: Customer, as: "customer", required: false },
+        { model: User, as: "customer", required: false },
         { model: Vehicle, as: "vehicle", required: false },
-        { model: Driver, as: "driver", required: false },
+        { model: User, as: "driver", required: false },
       ],
       order: [["id", "DESC"]],
     });
