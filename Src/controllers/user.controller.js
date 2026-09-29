@@ -63,6 +63,7 @@ exports.create = async (req, res) => {
     if (user_type === "DRIVER") {
       const driverColumn = {
         ...driverData,
+        driver_code:`DRI-${new Date().getFullYear()}-${newUser.id}`,
         driving_license_no: license_number,
         user_id: newUser.id,
         first_name: username ? username.split(" ")?.[0] : "",

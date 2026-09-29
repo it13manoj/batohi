@@ -165,7 +165,7 @@ exports.profile = async (req, res) => {
         {
           first_name: firstName,
           last_name: lastName,
-          driver_code: `BTD-` + req.user.id,
+          driver_code: `DRI-${new Date().getFullYear()}-${req.user.id}`,
           gender: gender,
           date_of_birth: dateOfBirth,
           profile_image: profileImage,
