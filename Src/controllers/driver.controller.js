@@ -1112,104 +1112,11 @@ exports.claimFreeTrial = async (req, res) => {
       where: { user_id: userId },
     });
 
-<<<<<<< HEAD
-        if (!driver) {
-            return res.status(404).json({
-                success: false,
-                message: 'Driver profile not found for this user'
-            });
-        }
-
-        const driverId = driver.id;
-
-        // 2. Check existing subscription for free trial status or expiration
-        const existingSubscription = await DriverSubscription.findOne({
-            where: { driverId: driverId }
-        });
-
-        if (existingSubscription) {
-            const now = new Date();
-            const expiryDate = new Date(existingSubscription.endDate);
-
-            // Check if current or previous subscription has expired
-            if (now > expiryDate || existingSubscription.status === 'expired') {
-                // Update status to expired if not updated already
-                if (existingSubscription.status !== 'expired') {
-                    await existingSubscription.update({ status: 'expired' });
-                }
-
-                return res.status(400).json({
-                    success: false,
-                    message: 'Your trial plan has expired'
-                });
-            }
-
-            // Check if driver already has an active subscription
-            if (existingSubscription.status === 'active') {
-                return res.status(400).json({
-                    success: false,
-                    message: 'You already have an active subscription or trial'
-                });
-            }
-        }
-
-        // 3. Fetch the free trial plan
-        const plan = await SubscriptionPlan.findOne({
-            where: {
-                vehicle_category: vehicleCategory,
-                is_free_trial: true,
-                is_active: true
-            }
-        });
-
-        if (!plan) {
-            return res.status(400).json({
-                success: false,
-                message: 'No free trial plan available for this vehicle category'
-            });
-        }
-
-        // 4. Calculate dates
-        const startDate = new Date();
-        const endDate = new Date();
-        endDate.setDate(endDate.getDate() + (plan.totalDays || 30));
-
-        // 5. Create DriverSubscription using valid driverId
-        const subscription = await DriverSubscription.create({
-            driverId: driverId,
-            planId: plan.id,
-            startDate: startDate,
-            endDate: endDate,
-            status: 'active'
-        });
-
-        // 6. Update driver vehicle category preference
-        await driver.update({ vehicleCategory: vehicleCategory });
-                                    
-        
-        return res.status(200).json({
-            success: true,
-            message: 'Free trial activated successfully',
-            subscription: {
-                id: subscription.id,
-                title: plan.name,
-                startDate: startDate.toISOString(),
-                endDate: endDate.toISOString()
-            }
-        });
-    } catch (error) {
-        console.error('Error claiming free trial:', error);
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
-=======
     if (!driver) {
       return res.status(404).json({
         success: false,
         message: "Driver profile not found for this user",
       });
->>>>>>> ddbdbde10bdfbb257eab70e3b351f22750838e24
     }
 
     const driverId = driver.id;

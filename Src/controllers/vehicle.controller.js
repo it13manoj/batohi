@@ -9,7 +9,7 @@ exports.create = async (req, res) => {
         })
         const vehicle = await Vehicle.create({
             user_id: req.user.id,
-            driver_id: driver.id,
+            driver_id: req.driver.id,
             vehicle_type_id: req.body.vehicle_type_id,
             registration_no: req.body.registration_no,
             vehicle_name: req.body.vehicle_name,
@@ -26,7 +26,6 @@ exports.create = async (req, res) => {
             permit_expiry_date: req.body.permit_expiry_date,
             status: req.body.status
         });
-
         res.status(201).json({
             message: "Vehicle created successfully",
             data: vehicle
