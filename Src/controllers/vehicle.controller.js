@@ -1,6 +1,7 @@
 const { Driver } = require("../Models");
 const Vehicle = require("../Models/vehicle");
 const VehicleType = require("../Models/vehicle.Type");
+const sendResponse = require("../Utils/reponse");
 
 exports.create = async (req, res) => {
     try {
@@ -101,5 +102,76 @@ exports.findByDriver = async (req, res) => {
             error: error.message
         });
 
+    }
+};
+
+exports.updateVehicle = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const vehicle = await Vehicle.findByPk(id);
+        if (!vehicle) return errorResponse(res, 404, "Vehicle not found");
+
+        const {
+            name,
+            vehicleName,
+            plateNumber,
+            registrationNo,
+            seatingCapacity,
+            fuel,
+            fuelType,
+            status,
+            driverId,
+            manufacturer,
+            model,
+            manufacturingYear,
+            colour,
+            color,
+            rcNumber,
+            insuranceNo,
+            insuranceNumber,
+            insuranceExpiryDate,
+            permitNumber,
+            permitExpiryDate,
+            vehicleTypeId,
+        } = req.body;
+
+        const updateData = {};
+        if (name !== undefined || vehicleName !== undefined)
+            updateData.vehicle_name = name || vehicleName;
+        if (plateNumber !== undefined || registrationNo !== undefined)
+            updateData.registration_no = plateNumber || registrationNo;
+        if (manufacturer !== undefined) updateData.manufacturer = manufacturer;
+        if (model !== undefined) updateData.model = model;
+        if (manufacturingYear !== undefined && manufacturingYear !== null)
+            updateData.manufacturing_year = Number(manufacturingYear);
+        if (colour !== undefined || color !== undefined)
+            updateData.colour = colour || color;
+        if (seatingCapacity !== undefined && seatingCapacity !== null)
+            updateData.seating_capacity = Number(seatingCapacity);
+        if (fuel !== undefined || fuelType !== undefined)
+            updateData.fuel_type = (fuel || fuelType)?.toLowerCase();
+        if (status !== undefined) updateData.status = status;
+        if (driverId !== undefined) updateData.driver_id = driverId;
+        if (rcNumber !== undefined) updateData.rc_number = rcNumber;
+        if (insuranceNo !== undefined || insuranceNumber !== undefined)
+            updateData.insurance_no = insuranceNo || insuranceNumber;
+        if (insuranceExpiryDate !== undefined)
+            updateData.insurance_expiry_date = insuranceExpiryDate;
+        if (permitNumber !== undefined) updateData.permit_number = permitNumber;
+        if (permitExpiryDate !== undefined)
+            updateData.permit_expiry_date = permitExpiryDate;
+        if (vehicleTypeId !== undefined) updateData.vehicle_type_id = vehicleTypeId;
+
+        console.log("Update Data Payload:", updateData);
+
+        // Call update directly on the fetched instance
+        await Vehicle.update(updateData, {
+            where: { id: id }
+        });
+
+        return sendResponse(res, 200, "Vehicle updated successfully", vehicle);
+    } catch (error) {
+        console.error("Update Vehicle Error:", error);
+        return sendResponse(res, 500, "Failed to update vehicle", error.message || error);
     }
 };
