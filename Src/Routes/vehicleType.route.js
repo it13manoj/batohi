@@ -10,7 +10,8 @@ const {
     activate,
     deactivate,
     update,
-    deleteType
+    deleteType,
+    subscribedPlan
 } = require("../controllers/vehicleType.controller");
 const authMiddleware = require("../Middleware/auth.middleware");
 
@@ -33,5 +34,6 @@ Route.patch("/deactivate/:id", authMiddleware, deactivate);
 // 3. Full update and deletion
 Route.put("/update/:id", authMiddleware, update);
 Route.delete("/delete/:id", authMiddleware, deleteType);
+Route.get("/subscripted/plan", authMiddleware, subscribedPlan);
 
 module.exports = Route;

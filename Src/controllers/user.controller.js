@@ -1,7 +1,7 @@
 const bcrypt = require("bcrypt");
 const fs = require("fs");
 const path = require("path");
-const { User, Customer, Role, Driver, Vehicle, VehicleType, OTP } = require("../Models/index");
+const { User, Customer, Role, Driver, Vehicle, VehicleType, OTP, DriverSubscription } = require("../Models/index");
 const { where, Sequelize, Op } = require("sequelize");
 const jwt = require("jsonwebtoken");
 const sendResponse = require("../Utils/reponse");
@@ -606,7 +606,7 @@ exports.updateLocation = async (req, res) => {
       return sendResponse(res, 400, "Latitude and longitude are required");
     }
 
-    const [updatedRows] = await User.update(
+    const updatedRows = await User.update(
       {
         latitude: parseFloat(latitude),
         longitude: parseFloat(longitude),
@@ -650,7 +650,6 @@ exports.findNearestDrivers = async (req, res) => {
   try {
     const { fromLat, fromLng, toLat, toLng, vehicleType, radius = 5 } = req.query;
 
-    // Validate pickup coordinates
     if (!fromLat || !fromLng) {
       return res.status(400).json({
         success: false,
@@ -664,13 +663,38 @@ exports.findNearestDrivers = async (req, res) => {
     const dropLng = toLng ? parseFloat(toLng) : null;
     const searchRadius = parseFloat(radius);
 
-    // Calculate Trip Distance if Drop location is provided
     let tripDistanceKm = 0;
     if (dropLat && dropLng) {
       tripDistanceKm = calculateHaversineDistance(pickupLat, pickupLng, dropLat, dropLng);
     }
 
-    // SQL Formula to calculate Driver distance to Pickup location
+    // STEP 1: Get user IDs of drivers with active subscriptions
+    const activeSubscribers = await DriverSubscription.findAll({
+      attributes: ["vehicleCategory"],
+      where: { 
+        status: "active",
+        ...(vehicleType ? { vehicleCategory: vehicleType } : {})
+      },
+      include: [
+        {
+          model: Driver,
+          as: "subscriptionDriver", // Make sure this alias matches DriverSubscription -> Driver
+          attributes: ["user_id"],
+        }
+      ]
+    });
+
+    // Extract user_ids with active subscriptions
+    const activeUserIds = activeSubscribers
+      .map(sub => sub.subscriptionDriver?.user_id)
+      .filter(Boolean);
+
+    // If no driver has an active subscription, return early
+    if (activeUserIds.length === 0) {
+      return res.status(200).json({ success: true, count: 0, data: [] });
+    }
+
+    // Distance formula
     const driverDistanceFormula = Sequelize.literal(`
       (6371 * acos(
         cos(radians(${pickupLat})) 
@@ -681,15 +705,12 @@ exports.findNearestDrivers = async (req, res) => {
       ))
     `);
 
-    // Build Vehicle filter ensuring only active vehicle types are matched
-    const vehicleTypeFilter = {
-      status: "active",
-      ...(vehicleType ? { vehicle_category: vehicleType } : {}),
-    };
-
-    // Query active drivers nearby
+    // STEP 2: Find active drivers matching the subscribed user_ids
     const drivers = await Driver.findAll({
-      where: { status: "active" },
+      where: { 
+        status: "active",
+        user_id: { [Op.in]: activeUserIds } // Filter by subscribed drivers only
+      },
       attributes: {
         include: [[driverDistanceFormula, "distance_km"]],
       },
@@ -702,16 +723,21 @@ exports.findNearestDrivers = async (req, res) => {
             latitude: { [Op.ne]: null },
             longitude: { [Op.ne]: null },
           },
+          required: true,
         },
         {
           model: Vehicle,
           as: "vehicle",
+          where: { status: "active" }, // Active vehicle required
           required: true,
           include: [
             {
               model: VehicleType,
               as: "vehicleType",
-              where: vehicleTypeFilter,
+              where: {
+                status: "active",
+                ...(vehicleType ? { vehicle_category: vehicleType } : {}),
+              },
               required: true,
             },
           ],
@@ -722,19 +748,17 @@ exports.findNearestDrivers = async (req, res) => {
       limit: 10,
     });
 
-    // Format final response payload
+    // Format response
     const formattedDrivers = drivers.map((driver) => {
       const driverObj = driver.toJSON();
       const driverToPickupKm = parseFloat(driverObj.distance_km || 0);
 
-      // Default pricing standard if not present in VehicleType table
       const baseFare = driverObj.vehicle?.vehicleType?.base_price || 30;
       const ratePerKm = driverObj.vehicle?.vehicleType?.price_per_km || 12;
 
-      // Estimated Trip Fare & Timing Calculations
       const estimatedFare = Math.round(baseFare + tripDistanceKm * ratePerKm);
-      const driverEtaMins = Math.ceil((driverToPickupKm / 25) * 60); // Speed 25km/h
-      const tripDurationMins = Math.ceil((tripDistanceKm / 30) * 60); // Speed 30km/h
+      const driverEtaMins = Math.ceil((driverToPickupKm / 25) * 60);
+      const tripDurationMins = Math.ceil((tripDistanceKm / 30) * 60);
 
       return {
         ...driverObj,
@@ -754,6 +778,7 @@ exports.findNearestDrivers = async (req, res) => {
       trip_distance_km: tripDistanceKm,
       data: formattedDrivers,
     });
+
   } catch (error) {
     console.error("Find Nearest Drivers Error:", error);
     return res.status(500).json({
@@ -762,6 +787,9 @@ exports.findNearestDrivers = async (req, res) => {
     });
   }
 };
+
+
+
 
 exports.deviceToken = async (req, res) => {
   try {
