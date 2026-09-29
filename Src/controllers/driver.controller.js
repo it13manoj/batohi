@@ -1,6 +1,14 @@
 const fs = require("fs");
 const path = require("path");
-const { Driver, User, Role, Vehicle, DriverSubscription, SubscriptionPlan } = require("../Models");
+const {
+  Driver,
+  User,
+  Role,
+  Vehicle,
+  DriverSubscription,
+  SubscriptionPlan,
+  OTP,
+} = require("../Models");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const booking = require("../Models/booking");
@@ -14,7 +22,7 @@ const db = require("../config/database");
 const { getMessaging } = require("firebase-admin/messaging");
 const Booked = require("../Models/booked");
 const generateOTP = require("../Utils/otp");
-const OTP = require("../Models/otp");
+
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const DEFAULT_NOTIFICATION_ICON =
@@ -639,7 +647,7 @@ exports.completeRide = async (req, res) => {
       where: {
         id: bookingId,
         driver_id: driverId,
-        status: "confirmed",
+        status: { [Op.in]: ["confirmed", "started", "accepted"] },
       },
     });
 
@@ -650,9 +658,21 @@ exports.completeRide = async (req, res) => {
       });
     }
 
-    // Update status to rejected
+    // Update status to completed
     booking.status = "completed";
     await booking.save();
+
+    // Deactivate live tracking
+    try {
+      const { LiveTracking } = require("../Models/index");
+      await LiveTracking.update(
+        { is_active: false, pickup_status: "completed" },
+        { where: { booking_id: bookingId } },
+      );
+    } catch (trackErr) {
+      console.warn("Live tracking deactivate warning:", trackErr.message);
+    }
+
     const rider = await User.findByPk(booking.user_id);
     if (rider && rider.device_token) {
       await sendPushNotification(rider.device_token, {
@@ -688,8 +708,8 @@ exports.cancelRide = async (req, res) => {
     const booking = await Booked.findOne({
       where: {
         id: bookingId,
-        user_id: driverId,
-        status: "pending",
+        [Op.or]: [{ driver_id: driverId }, { user_id: driverId }],
+        status: { [Op.in]: ["pending", "accepted", "confirmed"] },
       },
     });
 
@@ -754,7 +774,7 @@ exports.bookedStatus = async (req, res) => {
         },
         {
           model: OTP,
-          as: "otp", // Match the alias defined in Booked.hasOne / Booked.hasMany
+          as: "bookOtp", // Match the alias defined in Booked.hasOne / Booked.hasMany
           required: false, // Optional: prevents query failure if no OTP row exists yet
         },
         {
@@ -788,9 +808,18 @@ exports.bookedStatus = async (req, res) => {
       });
     }
 
+    let latestTracking = null;
+    try {
+      const { LiveTracking } = require("../Models/index");
+      latestTracking = await LiveTracking.findOne({
+        where: { booking_id: Number(id), is_active: true },
+        order: [["recorded_at", "DESC"]],
+      });
+    } catch (e) {}
+
     return res.status(200).json({
       success: true,
-      data: response,
+      data: { ...response.toJSON(), liveTracking: latestTracking },
     });
   } catch (error) {
     console.error("Error in bookedStatus:", error);
@@ -892,7 +921,10 @@ exports.startRide = async (req, res) => {
       });
     }
 
-    // 2. Update booking status using the correct booking_id
+    // 2. Fetch booking to get user_id for live tracking
+    const booking = await Booked.findByPk(booking_id);
+
+    // 3. Update booking status using the correct booking_id
     const [updatedRows] = await Booked.update(
       { status: "confirmed" },
       {
@@ -909,12 +941,31 @@ exports.startRide = async (req, res) => {
       });
     }
 
+    // 4. Create initial live tracking record
+    try {
+      const { LiveTracking } = require("../Models/index");
+      if (req.user && req.user.latitude && req.user.longitude) {
+        await LiveTracking.create({
+          booking_id: booking_id,
+          driver_id: req.user.id,
+          user_id: booking ? booking.user_id : null,
+          current_latitude: parseFloat(req.user.latitude) || 0,
+          current_longitude: parseFloat(req.user.longitude) || 0,
+          pickup_status: "pickup_confirmed",
+          is_active: true,
+          recorded_at: new Date(),
+        });
+      }
+    } catch (trackErr) {
+      console.warn("Live tracking init warning:", trackErr.message);
+    }
+
     return res.status(200).json({
       success: true,
       message: "Ride started successfully",
       data: {
         booking_id,
-        status: "confirmed",
+        status: "started",
       },
     });
   } catch (error) {
@@ -1488,10 +1539,7 @@ exports.completeProfile = async (req, res) => {
 
     let driver = await Driver.findOne({
       where: {
-        [Op.or]: [
-          { user_id: userId },
-          { id: userId },
-        ],
+        [Op.or]: [{ user_id: userId }, { id: userId }],
       },
     });
 
@@ -1573,24 +1621,37 @@ exports.completeProfile = async (req, res) => {
       updateData.vehicleCategory = selectedCategory.toLowerCase();
     }
 
-    if (body.firstName || body.first_name) updateData.first_name = body.firstName || body.first_name;
+    if (body.firstName || body.first_name)
+      updateData.first_name = body.firstName || body.first_name;
     if (body.lastName || body.last_name) updateData.last_name = body.lastName || body.last_name;
     if (body.gender) updateData.gender = body.gender.toLowerCase();
-    if (body.dateOfBirth || body.date_of_birth) updateData.date_of_birth = body.dateOfBirth || body.date_of_birth;
+    if (body.dateOfBirth || body.date_of_birth)
+      updateData.date_of_birth = body.dateOfBirth || body.date_of_birth;
     if (body.address) updateData.address = body.address;
     if (body.city) updateData.city = body.city;
     if (body.state) updateData.state = body.state;
     if (body.pincode) updateData.pincode = body.pincode;
-    if (body.mobileNo || body.mobile_number) updateData.mobile_number = body.mobileNo || body.mobile_number;
-    if (body.alternateMobile || body.alternate_mobile) updateData.alternate_mobile = body.alternateMobile || body.alternate_mobile;
-    if (body.drivingLicenseNo || body.driving_license_no) updateData.driving_license_no = body.drivingLicenseNo || body.driving_license_no;
-    if (body.licenseIssueDate || body.license_issue_date) updateData.license_issue_date = body.licenseIssueDate || body.license_issue_date;
-    if (body.licenseExpiryDate || body.license_expiry_date) updateData.license_expiry_date = body.licenseExpiryDate || body.license_expiry_date;
-    if (body.aadhaarNumber || body.aadhaar_number) updateData.aadhaar_number = body.aadhaarNumber || body.aadhaar_number;
-    if (body.panNumber || body.pan_number) updateData.pan_number = body.panNumber || body.pan_number;
-    if (body.experienceYears || body.experience_years) updateData.experience_years = Number(body.experienceYears || body.experience_years);
-    if (body.emergencyContactName || body.emergency_contact_name) updateData.emergency_contact_name = body.emergencyContactName || body.emergency_contact_name;
-    if (body.emergencyContactNumber || body.emergency_contact_number) updateData.emergency_contact_number = body.emergencyContactNumber || body.emergency_contact_number;
+    if (body.mobileNo || body.mobile_number)
+      updateData.mobile_number = body.mobileNo || body.mobile_number;
+    if (body.alternateMobile || body.alternate_mobile)
+      updateData.alternate_mobile = body.alternateMobile || body.alternate_mobile;
+    if (body.drivingLicenseNo || body.driving_license_no)
+      updateData.driving_license_no = body.drivingLicenseNo || body.driving_license_no;
+    if (body.licenseIssueDate || body.license_issue_date)
+      updateData.license_issue_date = body.licenseIssueDate || body.license_issue_date;
+    if (body.licenseExpiryDate || body.license_expiry_date)
+      updateData.license_expiry_date = body.licenseExpiryDate || body.license_expiry_date;
+    if (body.aadhaarNumber || body.aadhaar_number)
+      updateData.aadhaar_number = body.aadhaarNumber || body.aadhaar_number;
+    if (body.panNumber || body.pan_number)
+      updateData.pan_number = body.panNumber || body.pan_number;
+    if (body.experienceYears || body.experience_years)
+      updateData.experience_years = Number(body.experienceYears || body.experience_years);
+    if (body.emergencyContactName || body.emergency_contact_name)
+      updateData.emergency_contact_name = body.emergencyContactName || body.emergency_contact_name;
+    if (body.emergencyContactNumber || body.emergency_contact_number)
+      updateData.emergency_contact_number =
+        body.emergencyContactNumber || body.emergency_contact_number;
 
     await driver.update(updateData);
 
@@ -1638,10 +1699,7 @@ exports.updateVehicleCategory = async (req, res) => {
 
     let driver = await Driver.findOne({
       where: {
-        [Op.or]: [
-          { user_id: userId },
-          { id: userId },
-        ],
+        [Op.or]: [{ user_id: userId }, { id: userId }],
       },
     });
 
@@ -1741,5 +1799,84 @@ exports.createCheckoutSession = async (req, res) => {
       message: "Failed to create Stripe checkout session",
       error: error.message,
     });
+  }
+};
+
+exports.updateDriverLocation = async (req, res) => {
+  try {
+    const driverId = req.user.id;
+    const { latitude, longitude, booking_id, heading, speed, accuracy } = req.body;
+
+    if (!latitude || !longitude) {
+      return res
+        .status(400)
+        .json({ success: false, message: "latitude and longitude are required" });
+    }
+
+    const parsedLat = parseFloat(latitude);
+    const parsedLng = parseFloat(longitude);
+
+    // Update driver's current coordinates in Users table
+    await User.update(
+      { latitude: parsedLat, longitude: parsedLng, last_located_at: new Date() },
+      { where: { id: driverId } },
+    );
+
+    // If booking_id provided, insert a live tracking record
+    if (booking_id) {
+      const { LiveTracking, Booked } = require("../Models/index");
+      const activeBooking = await Booked.findOne({
+        where: {
+          id: booking_id,
+          driver_id: driverId,
+          status: { [Op.in]: ["started", "confirmed", "accepted"] },
+        },
+      });
+      if (activeBooking) {
+        // Calculate remaining distance to destination
+        let remainingKm = null;
+        let etaMinutes = null;
+        if (activeBooking.latitude_to && activeBooking.longitude_to) {
+          const R = 6371;
+          const dLat = ((parseFloat(activeBooking.latitude_to) - parsedLat) * Math.PI) / 180;
+          const dLon = ((parseFloat(activeBooking.longitude_to) - parsedLng) * Math.PI) / 180;
+          const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos((parsedLat * Math.PI) / 180) *
+              Math.cos((parseFloat(activeBooking.latitude_to) * Math.PI) / 180) *
+              Math.sin(dLon / 2) *
+              Math.sin(dLon / 2);
+          remainingKm = parseFloat((R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(2));
+          etaMinutes = Math.max(1, Math.ceil((remainingKm / 30) * 60));
+        }
+
+        await LiveTracking.create({
+          booking_id: activeBooking.id,
+          driver_id: driverId,
+          user_id: activeBooking.user_id,
+          current_latitude: parsedLat,
+          current_longitude: parsedLng,
+          heading: heading ? parseFloat(heading) : null,
+          speed: speed ? parseFloat(speed) : null,
+          accuracy: accuracy ? parseFloat(accuracy) : null,
+          distance_remaining_km: remainingKm,
+          estimated_arrival_minutes: etaMinutes,
+          pickup_status: "in_transit",
+          is_active: true,
+          recorded_at: new Date(),
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Location updated successfully",
+      data: { latitude: parsedLat, longitude: parsedLng },
+    });
+  } catch (error) {
+    console.error("Error updating driver location:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to update location", error: error.message });
   }
 };

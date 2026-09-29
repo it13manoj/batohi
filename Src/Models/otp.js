@@ -1,7 +1,7 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
-const Otp = sequelize.define("Otp", {
+const OTP = sequelize.define("bookOtp", {
     id: {
         type: DataTypes.INTEGER,
         autoIncrement: true,
@@ -35,4 +35,4 @@ const Otp = sequelize.define("Otp", {
     updatedAt: "updated_at"
 });
 
-module.exports = Otp;
+module.exports = OTP;

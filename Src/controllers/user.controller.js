@@ -1,12 +1,12 @@
 const bcrypt = require("bcrypt");
 const fs = require("fs");
 const path = require("path");
-const { User, Customer, Role, Driver, Vehicle, VehicleType } = require("../Models/index");
+const { User, Customer, Role, Driver, Vehicle, VehicleType, OTP } = require("../Models/index");
 const { where, Sequelize, Op } = require("sequelize");
 const jwt = require("jsonwebtoken");
 const sendResponse = require("../Utils/reponse");
 const driverData = require("../Utils/driver.json");
-const otp = require("../Models/otp");
+
 const { sendRegistrationEmail, sendOtpEmail } = require("../Utils/email");
 
 exports.create = async (req, res) => {
@@ -108,6 +108,7 @@ exports.login = async (req, res) => {
     const whereCondition = {
       email: cleanEmail,
       is_deleted: false,
+      user_type: { [Op.notIn]: ["ADMIN"] },
     };
 
     if (role && role !== "ALL") {
@@ -119,6 +120,8 @@ exports.login = async (req, res) => {
       }
     }
 
+  
+
     let user = await User.findOne({ where: whereCondition });
 
     // Fallback: If not found with specific role, match by email directly
@@ -127,6 +130,7 @@ exports.login = async (req, res) => {
         where: {
           email: cleanEmail,
           is_deleted: false,
+          user_type: { [Op.notIn]: ["ADMIN"] },
         },
       });
     }
@@ -135,6 +139,14 @@ exports.login = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "Account not found with this email",
+      });
+    }
+
+    // Explicit check to block ADMIN role logins
+    if (user.user_type && user.user_type.toUpperCase() === "ADMIN") {
+      return res.status(403).json({
+        success: false,
+        message: "Admin accounts are not allowed to log in through this portal.",
       });
     }
 
@@ -173,14 +185,14 @@ exports.login = async (req, res) => {
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
     // Delete previous OTPs for this user
-    await otp.destroy({
+    await OTP.destroy({
       where: {
         user_id: user.id,
       },
     });
 
     // Save new OTP in OTP table
-    await otp.create({
+    await OTP.create({
       user_id: user.id,
       otp: generatedOtp,
       booked_id: null,
@@ -223,7 +235,6 @@ exports.login = async (req, res) => {
     });
   }
 };
-
 exports.verifyOtp = async (req, res) => {
   try {
     const { user_id, email, otp: enteredOtp } = req.body;
@@ -254,7 +265,7 @@ exports.verifyOtp = async (req, res) => {
     const inputOtp = String(enteredOtp).trim();
 
     // Find OTP in DB
-    const otpData = await otp.findOne({
+    const otpData = await OTP.findOne({
       where: {
         user_id: user.id,
         otp: inputOtp,
@@ -275,7 +286,7 @@ exports.verifyOtp = async (req, res) => {
       : new Date(new Date(otpData.created_at).getTime() + 10 * 60 * 1000);
 
     if (new Date() > expiryTime) {
-      await otp.destroy({ where: { id: otpData.id } });
+      await OTP.destroy({ where: { id: otpData.id } });
       return res.status(400).json({
         success: false,
         message: "OTP has expired. Please click 'Resend OTP' to get a new code.",
@@ -283,7 +294,7 @@ exports.verifyOtp = async (req, res) => {
     }
 
     // Delete used OTP
-    await otp.destroy({ where: { id: otpData.id } });
+    await OTP.destroy({ where: { id: otpData.id } });
 
     // Update user to verified
     await User.update({ is_verified: true }, { where: { id: user.id } });
@@ -354,8 +365,8 @@ exports.resendOtp = async (req, res) => {
 
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
-    await otp.destroy({ where: { user_id: user.id } });
-    await otp.create({
+    await OTP.destroy({ where: { user_id: user.id } });
+    await OTP.create({
       user_id: user.id,
       otp: generatedOtp,
       booked_id: null,
@@ -636,7 +647,7 @@ const calculateHaversineDistance = (lat1, lon1, lat2, lon2) => {
 
 exports.findNearestDrivers = async (req, res) => {
   try {
-    const { fromLat, fromLng, toLat, toLng, vehicleType, radius = 10 } = req.query;
+    const { fromLat, fromLng, toLat, toLng, vehicleType, radius = 5 } = req.query;
 
     // Validate pickup coordinates
     if (!fromLat || !fromLng) {
@@ -672,7 +683,7 @@ exports.findNearestDrivers = async (req, res) => {
     // Build Vehicle filter ensuring only active vehicle types are matched
     const vehicleTypeFilter = {
       status: "active",
-      ...(vehicleType ? { name: vehicleType } : {}),
+      ...(vehicleType ? { vehicle_category: vehicleType } : {}),
     };
 
     // Query active drivers nearby

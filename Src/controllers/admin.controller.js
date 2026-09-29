@@ -18,6 +18,7 @@ const {
   Setting,
   Role,
   Transaction,
+  Booked,
 } = require("../Models/index");
 
 // Helper for standardized API responses
@@ -1790,61 +1791,121 @@ exports.getBookings = async (req, res) => {
       whereCondition.payment_status = payment;
     }
 
-    const rows = await Booking.findAll({
+    if (search.trim()) {
+      const searchTerm = `%${search.trim()}%`;
+      whereCondition[Op.or] = [
+        { booking_no: { [Op.like]: searchTerm } },
+        { pickup_address: { [Op.like]: searchTerm } },
+        { drop_address: { [Op.like]: searchTerm } },
+      ];
+    }
+
+    const rows = await Booked.findAll({
       where: whereCondition,
       include: [
-        { model: Customer, as: "customer", required: false },
-        { model: Vehicle, as: "vehicle", required: false },
-        { model: Driver, as: "driver", required: false },
+        {
+          model: User,
+          as: "rider",
+          required: false,
+          include: [
+            {
+              model: Customer,
+              as: "customer",
+              required: false,
+            },
+          ],
+        },
+        {
+          model: User,
+          as: "driver",
+          required: false,
+          include: [
+            {
+              model: Driver,
+              as: "driver",
+              required: false,
+              include: [
+                {
+                  model: Vehicle,
+                  as: "vehicle",
+                  required: false,
+                },
+              ],
+            },
+          ],
+        },
       ],
       order: [["id", "DESC"]],
     });
 
     const [total, pending, confirmed, active, completed, cancelled] = await Promise.all([
-      Booking.count().catch(() => 0),
-      Booking.count({ where: { booking_status: "Pending" } }).catch(() => 0),
-      Booking.count({ where: { booking_status: "Confirmed" } }).catch(() => 0),
-      Booking.count({ where: { booking_status: { [Op.in]: ["Active", "Started"] } } }).catch(
-        () => 0,
+      Booked.count().catch(() => 0),
+      Booked.count({ where: { booking_status: "Pending" } }).catch(() => 0),
+      Booked.count({ where: { booking_status: "Confirmed" } }).catch(() => 0),
+      Booked.count({ where: { booking_status: { [Op.in]: ["Active", "Started"] } } }).catch(
+        () => 0
       ),
-      Booking.count({ where: { booking_status: "Completed" } }).catch(() => 0),
-      Booking.count({ where: { booking_status: "Cancelled" } }).catch(() => 0),
+      Booked.count({ where: { booking_status: "Completed" } }).catch(() => 0),
+      Booked.count({ where: { booking_status: "Cancelled" } }).catch(() => 0),
     ]);
 
-    const formatted = rows.map((b) => ({
-      id: b.id,
-      bookingNumber: b.booking_no || `BK-${1000 + b.id}`,
-      customer: {
-        name: b.customer
-          ? `${b.customer.first_name || ""} ${b.customer.last_name || ""}`.trim()
-          : "Customer",
-        phone: b.customer?.mobile_number || "N/A",
-        email: b.customer?.email || "",
-      },
-      vehicle: {
-        name: b.vehicle?.vehicle_name || "Assigned Vehicle",
-        plate: b.vehicle?.registration_no || "N/A",
-        type: b.vehicle?.manufacturer || "Sedan",
-      },
-      driver: {
-        name: b.driver
-          ? `${b.driver.first_name || ""} ${b.driver.last_name || ""}`.trim()
-          : "Not Assigned",
-        phone: b.driver?.mobile_number || "N/A",
-      },
-      pickup: b.pickup_address || "Pickup location",
-      drop: b.drop_address || "Drop location",
-      startDate:
-        b.pickup_date ||
-        (b.created_at ? new Date(b.created_at).toISOString().split("T")[0] : "Today"),
-      startTime: b.pickup_time || "10:00 AM",
-      endDate: b.return_date || b.pickup_date || "Today",
-      endTime: b.return_time || "12:00 PM",
-      amount: Number(b.total_amount || 0),
-      paymentMethod: "Online / UPI",
-      paymentStatus: b.payment_status || "Pending",
-      status: b.booking_status || "Pending",
-    }));
+    const formatted = rows.map((b) => {
+      // Access nested customer & driver models safely
+      const riderUser = b.rider;
+      const riderCustomer = b.rider?.customer;
+      const vehicleInfo = b.driver?.driver?.vehicle;
+
+      // Extract customer name (checking User first, then Customer model)
+      let customerName = "";
+      if (riderUser?.first_name || riderUser?.last_name) {
+        customerName = `${riderUser.first_name || ""} ${riderUser.last_name || ""}`.trim();
+      } else if (riderCustomer?.name) {
+        customerName = riderCustomer.name;
+      } else if (riderCustomer?.first_name || riderCustomer?.last_name) {
+        customerName = `${riderCustomer.first_name || ""} ${riderCustomer.last_name || ""}`.trim();
+      } else {
+        customerName = "Customer";
+      }
+
+      const capitalize = str => str.charAt(0).toUpperCase() + str.slice(1);
+      // Extract driver name
+      const driverName = b.driver
+        ? `${b.driver.first_name || ""} ${b.driver.last_name || ""}`.trim()
+        : "Not Assigned";
+
+
+        
+      return {
+        id: b.id,
+        bookingNumber: b.booking_no || `BK-${1000 + b.id}`,
+        customer: {
+          name: customerName,
+          phone: riderUser?.mobile_number || riderCustomer?.mobile_number || riderCustomer?.phone || "N/A",
+          email: riderUser?.email || riderCustomer?.email || "",
+        },
+        vehicle: {
+          name: vehicleInfo?.vehicle_name || "Assigned Vehicle",
+          plate: vehicleInfo?.registration_no || "N/A",
+          type: vehicleInfo?.manufacturer || "Sedan",
+        },
+        driver: {
+          name: driverName || "Not Assigned",
+          phone: b.driver?.mobile_number || "N/A",
+        },
+        pickup: b.to || "Pickup location",
+        drop: b.from || "Drop location",
+        startDate:
+          b.pickup_date ||
+          (b.created_at ? new Date(b.created_at).toISOString().split("T")[0] : "Today"),
+        startTime: b.pickup_time || "10:00 AM",
+        endDate: b.return_date || b.pickup_date || "Today",
+        endTime: b.return_time || "12:00 PM",
+        amount: Number(b.total_amount || 0),
+        paymentMethod: "Online / UPI",
+        paymentStatus:  b.status  == "completed" ? "Paid" : "Pending",
+        status: capitalize(b.status) || "Pending",
+      };
+    });
 
     return successResponse(res, "Bookings fetched successfully", formatted, {
       total,
@@ -1858,6 +1919,7 @@ exports.getBookings = async (req, res) => {
     return errorResponse(res, 500, "Failed to fetch bookings", error);
   }
 };
+
 
 exports.updateBookingStatus = async (req, res) => {
   try {
@@ -2389,6 +2451,7 @@ exports.login = async (req, res) => {
       where: {
         email: email,
         is_deleted: false,
+        user_type:"ADMIN"
       },
     });
 
