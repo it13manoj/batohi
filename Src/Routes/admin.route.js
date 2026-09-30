@@ -1,6 +1,7 @@
 const express = require("express");
 const adminController = require("../controllers/admin.controller");
 const authMiddleware = require("../Middleware/auth.middleware");
+const { upload } = require("../Utils/upload");
 
 // Soft auth middleware that extracts user if token exists, but doesn't block if missing in dev
 const optionalAuth = (req, res, next) => {
@@ -20,7 +21,6 @@ router.post("/login", adminController.login);
 
 // 1. Dashboard
 router.get("/dashboard", optionalAuth, adminController.getDashboard);
-
 // 2. Customers
 router.get("/customers", optionalAuth, adminController.getCustomers);
 router.post("/customers", optionalAuth, adminController.createCustomer);
@@ -40,6 +40,7 @@ router.put("/drivers/:id/verify", optionalAuth, adminController.verifyDriver);
 router.get("/vehicles", optionalAuth, adminController.getVehicles);
 router.get("/vehicles/:id", optionalAuth, adminController.getVehicleById);
 router.post("/vehicles", optionalAuth, adminController.createVehicle);
+
 router.put("/vehicles/:id", optionalAuth, adminController.updateVehicle);
 router.delete("/vehicles/:id", optionalAuth, adminController.deleteVehicle);
 

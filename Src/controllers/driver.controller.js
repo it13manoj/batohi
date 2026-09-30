@@ -66,7 +66,6 @@ exports.login = async (req, res) => {
         status: true,
       },
     });
-
     console.log(user, "Driver User Found");
 
     if (!user) {

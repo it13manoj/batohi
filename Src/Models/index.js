@@ -124,6 +124,20 @@ Booking.belongsTo(VehicleType, {
   foreignKey: "vehicle_type_id",
   as: "vehicleType",
 });
+Booking.belongsTo(User, {
+    foreignKey: "user_id",
+    as: "User"
+});
+
+User.hasOne(Customer, {
+    foreignKey: "user_id",
+    as: "Customer"
+});
+
+Customer.belongsTo(User, {
+    foreignKey: "user_id",
+    as: "User"
+});
 // ================= TRIP ASSOCIATIONS =================
 
 Driver.hasMany(Trip, {
@@ -210,7 +224,15 @@ OTP.hasMany(Booked, { foreignKey: "booked_id", as: "bookOtp" });
 Booked.hasMany(OTP, { foreignKey: "booked_id", as: "bookOtp" });
 
 
+Payment.belongsTo(Booking, {
+    foreignKey: "booking_id",
+    as: "Booking"
+});
 
+Booking.hasMany(Payment, {
+    foreignKey: "booking_id",
+    as: "Payments"
+});
 
 
 module.exports = {

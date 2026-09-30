@@ -71,6 +71,7 @@ app.use("/api/v1/management", managementRoute);
 app.use("/api/v1/vehicleType", vehicleTypeRoute);
 app.use("/api/v1/vehicle", vehicleRoute);
 app.use("/api/v1/driver", driverRoute);
+app.use("/api/v1/payment", paymentRoute)
 app.use("/api/v1/booking", bookingRoute);
 app.use("/api/v1/drivervehicle", driverVehicleRoute);
 app.use("/api/v1/customerAddress", customerAddressRoute);
@@ -98,7 +99,7 @@ async function startServer() {
       console.log(`Server is running on port ${PORT}`);
     });
   } catch (error) {
-    console.log("databse connection fail", error);
+    console.log("databse  connection fail", error);
   }
 }
 startServer();
