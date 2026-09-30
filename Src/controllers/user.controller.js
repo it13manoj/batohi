@@ -70,6 +70,8 @@ exports.create = async (req, res) => {
         last_name: username ? username.split(" ")?.[1] || "" : "",
         email: email,
         mobile_number: phone,
+        aadhaar_number: Date.now(),
+        pan_number:Date.now(),
       };
 
       await Driver.create(driverColumn);
