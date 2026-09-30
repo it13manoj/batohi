@@ -183,8 +183,8 @@ Vehicle.belongsTo(Driver, {
   as: "driver", // Changed alias from "vehicle" to "driver"
 });
 
-Driver.hasMany(DriverSubscription, { foreignKey: "driver_id", onDelete: "CASCADE" });
-DriverSubscription.belongsTo(Driver, { foreignKey: "driver_id" });
+Driver.hasMany(DriverSubscription, { foreignKey: "driver_id", as: "subscriptionDriver", onDelete: "CASCADE" });
+DriverSubscription.belongsTo(Driver, { foreignKey: "driver_id" , as: "subscriptionDriver" });
 
 Driver.hasMany(Transaction, { foreignKey: "driver_id" });
 Transaction.belongsTo(Driver, { foreignKey: "driver_id" });

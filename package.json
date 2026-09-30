@@ -12,6 +12,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@getbrevo/brevo": "^6.0.3",
     "bcrypt": "^6.0.0",
     "body-parser": "^2.3.0",
     "config": "^5.0.0",

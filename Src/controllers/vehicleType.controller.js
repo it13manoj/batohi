@@ -1,6 +1,7 @@
+const { DriverSubscription, Driver } = require("../Models");
 const VehicleType = require("../Models/vehicle.Type");
 const sendResponse = require("../Utils/reponse");
-const { Op } = require("sequelize");
+const { Op, Model } = require("sequelize");
 
 /**
  * 1. Create a new Vehicle Type
@@ -75,7 +76,9 @@ exports.create = async (req, res) => {
 exports.getType = async (req, res) => {
     try {
         const { status, category, vehicle_category } = req.query;
-        const whereClause = {};
+        const whereClause = {
+            user_id: req.user.id
+        };
 
         // Optional status filter (?status=active or ?status=inactive)
         if (status) {
@@ -92,11 +95,31 @@ exports.getType = async (req, res) => {
             order: [["id", "ASC"]]
         });
 
+        const subs = await DriverSubscription.findAll({
+            where: { status: "active" },
+            include: [
+                {
+                    model: Driver,
+                    as: "subscriptionDriver",
+                    where: { user_id: req.user.id },
+                }
+            ],
+            order: [["createdAt", "DESC"]]
+        });
+
+        // Extract all subscribed vehicle categories into an array
+        const activeCategories = subs.map(item => item.vehicleCategory);
+
+        // Filter response matching any of the active categories
+        const filterResponse = response.filter(row =>
+            activeCategories.includes(row.vehicle_category)
+        );
+
         return sendResponse(
             res,
             200,
             "Successfully fetched records!",
-            response
+            filterResponse
         );
     } catch (error) {
         console.error("Get Vehicle Types Error:", error);
@@ -384,6 +407,44 @@ exports.deleteType = async (req, res) => {
             res,
             500,
             error.message || "Failed to delete vehicle type"
+        );
+    }
+};
+
+exports.subscribedPlan = async (req, res) => {
+    try {
+
+        const response = await DriverSubscription.findAll({
+            attributes: ["vehicleCategory"], // Only select vehicleCategory
+            where: { status: "active" },
+            include: [
+                {
+                    model: Driver,
+                    as: "subscriptionDriver",
+                    where: { user_id: req.user.id },
+                    attributes: [] // Exclude driver columns from SELECT to prevent GROUP BY conflicts
+                }
+            ],
+            group: ["vehicleCategory"]
+        });
+
+        if (!response) {
+            return sendResponse(res, 404, "Vehicle type not found");
+        }
+
+
+        return sendResponse(
+            res,
+            200,
+            "Subscript Plan successfully",
+            response
+        );
+    } catch (error) {
+        console.error("Subscript Plan Vehicle Type Error:", error);
+        return sendResponse(
+            res,
+            500,
+            error.message || "Failed to Subscript Plan vehicle type"
         );
     }
 };

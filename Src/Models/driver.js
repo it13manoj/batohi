@@ -130,7 +130,7 @@ const Driver = sequelize.define(
             allowNull: false
         },
 
-        /* Driver Documents */
+        /* Driver Documents */ 
 
         aadhaar_number: {
             type: DataTypes.STRING(20),
