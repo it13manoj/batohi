@@ -1,9 +1,30 @@
 const express = require("express");
-const { create } = require("../controllers/agent.controller");
 
-const Route = express.Router();
+const router = express.Router();
 
-Route.post("/create", create);
+const {
+    createInvoice,
+    getAllInvoices,
+    getInvoiceById,
+    updateInvoice,
+    deleteInvoice
+} = require("../controllers/invoice.controller");
 
 
-module.exports = Route;
+// Create
+router.post("/create", createInvoice);
+
+// Get all
+router.get("/all", getAllInvoices);
+
+// Get by ID
+router.get("/:id", getInvoiceById);
+
+// Update
+router.put("/:id", updateInvoice);
+
+// Delete
+router.delete("/:id", deleteInvoice);
+
+
+module.exports = router;

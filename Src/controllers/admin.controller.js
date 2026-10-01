@@ -2,7 +2,7 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { Op } = require("sequelize");
 const {
-     User,
+  User,
   Admin,
   Customer,
   Driver,
@@ -15,6 +15,7 @@ const {
   Coupon,
   Review,
   Notification,
+
   Setting,
   Role,
   Transaction,
@@ -32,14 +33,13 @@ const successResponse = (res, message = "Success", data = null, meta = null) => 
   });
 };
 
-const errorResponse = (res, statusCode = 500, message = "Internal Server Error", error = null) => {
-  return res.status(statusCode).json({
-    success: false,
-    statusCode,
-    message,
-    error: error?.message || error || null,
-  });
-};
+//   return res.status(statusCode).json({
+//     success: false,
+//     statusCode,
+//     message,
+//     error: error?.message || error || null,
+//   });
+// };
 
 // Helper to generate absolute URLs for uploaded documents and images
 const getFullUrl = (req, filePath) => {
@@ -73,12 +73,12 @@ exports.getDashboard = async (req, res) => {
     // Revenue calculation (from bookings or payments)
     let totalRevenue = 0;
     try {
-      const revenueSum = await Booking.sum("total_amount", {
+      const revenueSum = await Booking.sum("total_amountoo", {
         where: {
           [Op.or]: [
             { payment_status: "Paid" },
             { payment_status: "paid" },
-            { booking_status: "Completed" },
+            { bking_status: "Completed" },
             { booking_status: "completed" },
           ],
         },
@@ -430,15 +430,6 @@ exports.getDrivers = async (req, res) => {
       whereCondition.status = status.toLowerCase();
     }
 
-    if (search) {
-      whereCondition[Op.or] = [
-        { first_name: { [Op.like]: `%${search}%` } },
-        { last_name: { [Op.like]: `%${search}%` } },
-        { mobile_number: { [Op.like]: `%${search}%` } },
-        { email: { [Op.like]: `%${search}%` } },
-        { city: { [Op.like]: `%${search}%` } },
-      ];
-    }
 
     const { count, rows } = await Driver.findAndCountAll({
       where: whereCondition,
@@ -1378,7 +1369,7 @@ exports.getVehicleById = async (req, res) => {
 
     const formatted = {
       id: v.id,
-       name: v.vehicle_name || `${v.manufacturer || ""} ${v.model || ""}`.trim() || "Vehicle",
+      name: v.vehicle_name || `${v.manufacturer || ""} ${v.model || ""}`.trim() || "Vehicle",
       vehicleName: v.vehicle_name || "",
       vehicle_name: v.vehicle_name || "",
       plateNumber: v.registration_no || "N/A",
@@ -1874,7 +1865,7 @@ exports.getBookings = async (req, res) => {
         : "Not Assigned";
 
 
-        
+
       return {
         id: b.id,
         bookingNumber: b.booking_no || `BK-${1000 + b.id}`,
@@ -1902,7 +1893,7 @@ exports.getBookings = async (req, res) => {
         endTime: b.return_time || "12:00 PM",
         amount: Number(b.total_amount || 0),
         paymentMethod: "Online / UPI",
-        paymentStatus:  b.status  == "completed" ? "Paid" : "Pending",
+        paymentStatus: b.status == "completed" ? "Paid" : "Pending",
         status: capitalize(b.status) || "Pending",
       };
     });
@@ -1988,7 +1979,6 @@ exports.refundPayment = async (req, res) => {
 
     const payment = await Payment.findByPk(id);
     if (!payment) return errorResponse(res, 404, "Payment record not found");
-
     await payment.update({
       payment_status: "Refunded",
       refund_amount: payment.amount,
@@ -2451,7 +2441,7 @@ exports.login = async (req, res) => {
       where: {
         email: email,
         is_deleted: false,
-        user_type:"ADMIN"
+        user_type: "ADMIN"
       },
     });
 

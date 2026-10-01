@@ -32,6 +32,7 @@ const locationRoute = require("./Src/Routes/location.route");
 const roleRoutes = require("./Src/Routes/role.route");
 const tripRoute = require("./Src/Routes/trip.route");
 const liveTrackingRoute = require("./Src/Routes/liveTracking.route");
+const invoiceRoute = require("./Src/Routes/invoice.routes")
 
 // Load all database models and associations
 require("./Src/Models/index");
@@ -77,6 +78,7 @@ app.use("/api/v1/drivervehicle", driverVehicleRoute);
 app.use("/api/v1/customerAddress", customerAddressRoute);
 app.use("/api/v1/farerule", fareruleRoute);
 app.use("/api/v1/coupon", couponRoute);
+app.use("/api/v1/invoice", invoiceRoute)
 app.use("/api/v1/review", reviewRoute);
 app.use("/api/v1/trip", tripRoute);
 app.use("/api/v1/notification", notificationRoute);

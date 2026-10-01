@@ -47,10 +47,7 @@ exports.create = async (req, res) => {
     }
 };
 
-
-// =========================
-// GET ALL PAYMENTS
-// =========================const { QueryTypes } = require("sequelize");
+0
 
 
 // =====================================================
@@ -230,14 +227,18 @@ exports.getPaymentStats = async (req, res) => {
         const refundedAmount = payments.reduce(
             (sum, p) => sum + Number(p.refund_amount || 0),
             0
-        );
-
+        );                
         const netRevenue = totalRevenue - refundedAmount;
 
         // Today's revenue
         const today = new Date();
 
         const todayRevenue = successfulPayments
+
+
+
+
+
             .filter(p => {
                 if (!p.paid_at) return false;
 

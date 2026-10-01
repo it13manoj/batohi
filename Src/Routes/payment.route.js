@@ -24,7 +24,7 @@ Route.get("/stats", getPaymentStats);
 
 
 // Get single payment
-Route.get("/:id", getPaymentById);
+Route.get("/:id", getPaymentById);``
 
 
 module.exports = Route;
