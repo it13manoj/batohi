@@ -5,7 +5,6 @@ const express = require("express");
 const { PORT } = process.env;
 const app = express();
 const cors = require("cors");
-
 const path = require("path");
 const swaggerUi = require("swagger-ui-express");
 const swaggerSpec = require("./Src/swagger/swagger");

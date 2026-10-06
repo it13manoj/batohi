@@ -23,9 +23,9 @@ const transporter = nodemailer.createTransport({
 });
 
 
-// ========================================
-// SMTP CONNECTION TEST
-// ========================================
+// ==============
+// SMTP CONNECTION TEST 
+// =====
 
 transporter.verify((error, success) => {
     if (error) {
